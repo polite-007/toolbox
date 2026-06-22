@@ -1,4 +1,4 @@
-package httpx
+﻿package httpx
 
 import (
 	"github.com/projectdiscovery/gologger"
@@ -6,17 +6,16 @@ import (
 	"github.com/projectdiscovery/httpx/runner"
 )
 
-func (c *HttpxClient) Run(i []string, s func(r runner.Result)) error {
-	// 设置日志级别
-	gologger.DefaultLogger.SetMaxLevel(levels.LevelInfo) // increase the verbosity (optional)
+// Run 执行 HTTP 探测
+//   - targets: 目标列表（域名或 IP）
+//   - onResult: 每条结果的回调函数
+//
+// 注意：会将全局 gologger 日志级别设为 Info 以输出探测详情
+func (c *HttpxClient) Run(targets []string, onResult func(r runner.Result)) error {
+	gologger.DefaultLogger.SetMaxLevel(levels.LevelInfo)
 
-	options := c.Options
-	options.InputTargetHost = i
+	options := c.toRunnerOptions(targets, onResult)
 
-	// 设置回调函数
-	options.OnResult = s
-
-	// 配置验证
 	if err := options.ValidateOptions(); err != nil {
 		return err
 	}
@@ -27,8 +26,6 @@ func (c *HttpxClient) Run(i []string, s func(r runner.Result)) error {
 	}
 	defer httpxRunner.Close()
 
-	// 执行扫描
 	httpxRunner.RunEnumeration()
-
 	return nil
 }
