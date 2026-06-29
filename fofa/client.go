@@ -1,36 +1,118 @@
 package fofa
 
 import (
+	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const (
 	// FOFA API 基础地址
-	BaseURL = "https://fofa.info/api/v1/"
-	// 默认超时时间
-	DefaultTimeout = 30 * time.Second
+	BaseURL = "https://fofa.info" // 字符串末尾不带斜杠
+	// 默认查询超时时间
+	DefaultSearchTimeout = 30 * time.Second
+	// 默认聚合查询时间
+	DefaultStatsTimeout = 90 * time.Second
+	// 默认轻量请求超时时间（account 等）
+	DefaultAccountTimeout = 10 * time.Second
+	// 默认重试次数
+	DefaultRetryCount = 3
+	// 默认重试基础间隔（秒）
+	DefaultRetryInterval = 1
 )
 
 // Client FOFA API 客户端
 type Client struct {
-	email      string        // FOFA 账号邮箱
-	key        string        // FOFA API Key
-	baseURL    string        // API 基础地址
-	timeout    time.Duration // 请求超时时间
-	httpClient *http.Client  // HTTP 客户端
+	email         string        // FOFA 账号邮箱
+	key           string        // FOFA API Key
+	baseURL       string        // API 基础地址
+	httpClient    *http.Client  // HTTP 客户端（不设全局超时，由 context 控制）
+	retryCount    int           // 重试次数，默认 3，设为 0 则不重试
+	retryInterval time.Duration // 首次重试间隔，后续每次翻倍，默认 1s
 }
 
-// NewClient 创建新的 FOFA 客户端
-func NewClient(email, key string) *Client {
+// NewClient 创建新的 FOFA 客户端，支持通过 Option 函数自定义配置
+func NewClient(email, key string, opts ...Option) *Client {
+	cfg := defaultConfig()
+	cfg.email = email
+	cfg.key = key
+	for _, opt := range opts {
+		opt(cfg)
+	}
 	return &Client{
-		email:   email,
-		key:     key,
-		baseURL: BaseURL,
-		timeout: DefaultTimeout,
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
+		email:         cfg.email,
+		key:           cfg.key,
+		baseURL:       cfg.baseURL,
+		httpClient:    cfg.httpClient,
+		retryCount:    cfg.retryCount,
+		retryInterval: cfg.retryInterval,
 	}
 }
 
+// retryDelays 根据配置生成重试间隔序列，每次翻倍
+func (c *Client) retryDelays() []time.Duration {
+	if c.retryCount <= 0 || c.retryInterval <= 0 {
+		return nil
+	}
+	delays := make([]time.Duration, c.retryCount)
+	for i := range delays {
+		delays[i] = c.retryInterval * (1 << i) // 每次翻倍: 1s, 2s, 4s, 8s...
+	}
+	return delays
+}
+
+// do 执行 HTTP GET 请求，支持 context 超时控制和自动重试
+// 返回响应体的原始字节，调用方自行解析 JSON
+func (c *Client) do(ctx context.Context, fullURL string) ([]byte, error) {
+	delays := c.retryDelays()
+	maxAttempts := 1
+	if len(delays) > 0 {
+		maxAttempts = len(delays) + 1 // 含首次请求
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+		if err != nil {
+			return nil, errors.Wrap(err, "构建请求失败")
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = errors.Wrap(err, "发送请求失败")
+			if attempt < len(delays) && ctx.Err() == nil {
+				time.Sleep(delays[attempt])
+				continue
+			}
+			return nil, lastErr
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = errors.Wrap(err, "读取响应失败")
+			if attempt < len(delays) && ctx.Err() == nil {
+				time.Sleep(delays[attempt])
+				continue
+			}
+			return nil, lastErr
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+			if attempt < len(delays) && ctx.Err() == nil {
+				time.Sleep(delays[attempt])
+				continue
+			}
+			return nil, lastErr
+		}
+
+		return body, nil
+	}
+
+	return nil, lastErr
+}

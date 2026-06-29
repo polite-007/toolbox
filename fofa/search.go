@@ -5,11 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 )
@@ -142,7 +139,6 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 
 	// 检查查询字段不得少于2个
 	if len(strings.Split(req.Fields, ",")) < 2 {
-		// 自动加个ip，如果已经有ip则加个port
 		if req.Fields == "ip" {
 			req.Fields += ",port"
 		} else {
@@ -154,9 +150,8 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 	qbase64 := base64.StdEncoding.EncodeToString([]byte(req.Query))
 
 	// 构建请求 URL
-	apiURL := fmt.Sprintf("%s/search/all", c.baseURL)
+	apiURL := fmt.Sprintf("%s/api/v1/search/all", c.baseURL)
 	params := url.Values{}
-	// params.Set("email", c.email)
 	params.Set("key", c.key)
 	params.Set("qbase64", qbase64)
 	params.Set("size", fmt.Sprintf("%d", req.Size))
@@ -165,88 +160,41 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 
 	fullURL := fmt.Sprintf("%s?%s", apiURL, params.Encode())
 
-	// 重试间隔：5秒、10秒、20秒
-	retryDelays := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second}
-	var lastErr error
+	// 设置 context 超时
+	ctx := req.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, DefaultSearchTimeout)
+	defer cancel()
 
-	// 执行请求，最多重试3次
-	for attempt := 0; attempt <= len(retryDelays); attempt++ {
-		// 发送 HTTP 请求（支持上下文取消）
-		httpReq, err := http.NewRequestWithContext(req.Ctx, http.MethodGet, fullURL, nil)
-		if err != nil {
-			lastErr = errors.Wrap(err, "构建请求失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-		resp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			lastErr = errors.Wrap(err, "发送搜索请求失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 读取响应体
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = errors.Wrap(err, "读取响应失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 检查 HTTP 状态码
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 解析 JSON 响应
-		var searchResp SearchResponse
-		if err := json.Unmarshal(body, &searchResp); err != nil {
-			lastErr = errors.Wrap(err, "解析响应 JSON 失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 检查 API 返回的错误
-		if searchResp.Error {
-			lastErr = fmt.Errorf("FOFA API 错误: %s", searchResp.ErrMsg)
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 保存字段名列表，用于后续的 GetResults() 方法
-		fields := strings.Split(req.Fields, ",")
-		searchResp.Fields = make([]string, 0, len(fields))
-		for _, field := range fields {
-			field = strings.TrimSpace(field)
-			if field != "" {
-				searchResp.Fields = append(searchResp.Fields, field)
-			}
-		}
-
-		return &searchResp, nil
+	// 发送请求
+	body, err := c.do(ctx, fullURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "搜索请求失败")
 	}
 
-	return nil, lastErr
+	// 解析 JSON 响应
+	var searchResp SearchResponse
+	if err := json.Unmarshal(body, &searchResp); err != nil {
+		return nil, errors.Wrap(err, "解析响应 JSON 失败")
+	}
+
+	// 检查 API 返回的错误
+	if searchResp.Error {
+		return nil, fmt.Errorf("FOFA API 错误: %s", searchResp.ErrMsg)
+	}
+
+	// 保存字段名列表，用于后续的 GetResults() 方法
+	fields := strings.Split(req.Fields, ",")
+	searchResp.Fields = make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field != "" {
+			searchResp.Fields = append(searchResp.Fields, field)
+		}
+	}
+
+	return &searchResp, nil
 }
 

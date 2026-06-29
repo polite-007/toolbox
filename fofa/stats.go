@@ -1,20 +1,19 @@
 package fofa
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/pkg/errors"
 )
 
 // StatsRequest 统计请求参数
 type StatsRequest struct {
-	Query  string // 搜索查询语句
+	Ctx    context.Context // 上下文
+	Query  string          // 搜索查询语句
 	Size   int
 	Fields string // 统计字段，如: protocol,port,country
 }
@@ -45,88 +44,52 @@ func (c *Client) Stats(req *StatsRequest) (*StatsResponse, error) {
 		return nil, errors.New("统计字段不能为空")
 	}
 
+	if req.Size < 1 || req.Size > 10000 {
+		return nil, errors.New("统计数量必须在1到10000之间")
+	}
+
 	// 对查询语句进行 base64 编码
 	qbase64 := base64.StdEncoding.EncodeToString([]byte(req.Query))
 
 	// 构建请求 URL
-	apiURL := fmt.Sprintf("%s/search/stats", c.baseURL)
+	apiURL := fmt.Sprintf("%s/api/v1/search/stats", c.baseURL)
 	params := url.Values{}
-	// params.Set("email", c.email)
-	params.Set("size", fmt.Sprintf("%d", req.Size))
 	params.Set("key", c.key)
 	params.Set("qbase64", qbase64)
+	params.Set("size", fmt.Sprintf("%d", req.Size))
 	params.Set("fields", req.Fields)
 
 	fullURL := fmt.Sprintf("%s?%s", apiURL, params.Encode())
 
-	// 重试间隔：5秒、10秒、20秒
-	retryDelays := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second}
-	var lastErr error
+	// 设置 context 超时
+	ctx := req.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, DefaultStatsTimeout)
+	defer cancel()
 
-	// 执行请求，最多重试3次
-	for attempt := 0; attempt <= len(retryDelays); attempt++ {
-		// 发送 HTTP 请求
-		resp, err := c.httpClient.Get(fullURL)
-		if err != nil {
-			lastErr = errors.Wrap(err, "发送统计请求失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 读取响应体
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = errors.Wrap(err, "读取响应失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 检查 HTTP 状态码
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 解析 JSON 响应
-		var statsResp StatsResponse
-		if err := json.Unmarshal(body, &statsResp); err != nil {
-			lastErr = errors.Wrap(err, "解析响应 JSON 失败")
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 检查 API 返回的错误
-		if statsResp.Error {
-			lastErr = fmt.Errorf("FOFA API 错误: %s", statsResp.ErrMsg)
-			if attempt < len(retryDelays) {
-				time.Sleep(retryDelays[attempt])
-				continue
-			}
-			return nil, lastErr
-		}
-
-		// 保存字段名列表，用于后续的 GetResults() 方法
-		statsResp.Field = req.Fields
-		statsResp.Size = req.Size
-
-		return &statsResp, nil
+	// 发送请求
+	body, err := c.do(ctx, fullURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "统计请求失败")
 	}
 
-	return nil, lastErr
+	// 解析 JSON 响应
+	var statsResp StatsResponse
+	if err := json.Unmarshal(body, &statsResp); err != nil {
+		return nil, errors.Wrap(err, "解析响应 JSON 失败")
+	}
+
+	// 检查 API 返回的错误
+	if statsResp.Error {
+		return nil, fmt.Errorf("FOFA API 错误: %s", statsResp.ErrMsg)
+	}
+
+	// 保存字段名列表，用于后续的 GetResults() 方法
+	statsResp.Field = req.Fields
+
+	return &statsResp, nil
 }
 
 // GetResults 从 Aggs 中获取统计结果
@@ -174,6 +137,7 @@ func (s *StatsResponse) GetResults(field string) []*StatsResult {
 	return results
 }
 
+// GetDistinct 获取唯一计数
 func (s *StatsResponse) GetDistinct(field string) int {
 	aggData, exists := s.Distinct[field]
 	if !exists {
