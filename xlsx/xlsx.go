@@ -148,3 +148,65 @@ func GenerateExcelToFile(fileName string, sheets []SheetData) error {
 
 	return nil
 }
+
+func appendSheetData(f *excelize.File, sheet SheetData) error {
+	sheetName := sheet.SheetName
+	if sheetName == "" {
+		sheetName = DefaultAssetExportSheetName
+	}
+
+	if idx, err := f.GetSheetIndex(sheetName); err != nil {
+		return errors.WithMessage(err, "获取工作表失败")
+	} else if idx < 0 {
+		return fmt.Errorf("工作表 %s 不存在", sheetName)
+	}
+
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return errors.WithMessage(err, "读取工作表失败")
+	}
+
+	startRow := len(rows) + 1
+	if len(rows) == 0 && len(sheet.Titles) > 0 {
+		if err := setByRow(f, sheetName, 1, sheet.Titles); err != nil {
+			return errors.WithMessage(err, "写入表头失败")
+		}
+		startRow = 2
+	}
+
+	for i, row := range sheet.Data {
+		if err := setByRow(f, sheetName, startRow+i, row); err != nil {
+			return errors.WithMessage(err, "写入数据失败")
+		}
+	}
+	return nil
+}
+
+// AppendExcelToFile 向已有 Excel 文件追加数据。
+// 每个 SheetData 使用 SheetName 和 Data；若工作表为空且提供了 Titles，则先写入表头。
+func AppendExcelToFile(fileName string, sheets []SheetData) error {
+	if _, err := os.Stat(fileName); err != nil {
+		return errors.WithMessage(err, "文件不存在")
+	}
+
+	f, err := excelize.OpenFile(fileName)
+	if err != nil {
+		return errors.WithMessage(err, "打开文件失败")
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("关闭文件失败: %v", err)
+		}
+	}()
+
+	for _, sheet := range sheets {
+		if err := appendSheetData(f, sheet); err != nil {
+			return errors.WithMessage(err, "appendSheetData failed")
+		}
+	}
+
+	if err := f.Save(); err != nil {
+		return errors.WithMessage(err, "保存文件失败")
+	}
+	return nil
+}
