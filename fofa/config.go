@@ -47,14 +47,14 @@ func WithProxy(proxyURL string) Option {
 	}
 }
 
-// WithRetryCount 设置重试次数，设为 0 则不重试
+// WithRetryCount 设置请求过快时的重试次数，设为 0 则不重试
 func WithRetryCount(count int) Option {
 	return func(c *config) {
 		c.retryCount = count
 	}
 }
 
-// WithRetryInterval 设置首次重试间隔，后续每次翻倍
+// WithRetryInterval 设置请求过快时首次重试间隔，后续每次翻倍
 func WithRetryInterval(d time.Duration) Option {
 	return func(c *config) {
 		c.retryInterval = d

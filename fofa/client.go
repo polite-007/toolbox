@@ -2,6 +2,7 @@ package fofa
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,7 +20,7 @@ const (
 	DefaultStatsTimeout = 300 * time.Second
 	// 默认轻量请求超时时间（account 等）
 	DefaultAccountTimeout = 30 * time.Second
-	// 默认重试次数
+	// 默认重试次数（仅针对 FOFA 请求过快 errmsg 重试）
 	DefaultRetryCount = 3
 	// 默认重试基础间隔（秒）
 	DefaultRetryInterval = 1
@@ -31,8 +32,8 @@ type Client struct {
 	key           string        // FOFA API Key
 	baseURL       string        // API 基础地址
 	httpClient    *http.Client  // HTTP 客户端（不设全局超时，由 context 控制）
-	retryCount    int           // 重试次数，默认 3，设为 0 则不重试
-	retryInterval time.Duration // 首次重试间隔，后续每次翻倍，默认 1s
+	retryCount    int           // 请求过快时的重试次数，默认 3，设为 0 则不重试
+	retryInterval time.Duration // 请求过快时首次重试间隔，后续每次翻倍，默认 1s
 }
 
 // NewClient 创建新的 FOFA 客户端，支持通过 Option 函数自定义配置
@@ -68,8 +69,14 @@ func (c *Client) retryDelays() []time.Duration {
 	return delays
 }
 
-// do 执行 HTTP GET 请求，支持 context 超时控制和自动重试
-// 返回响应体的原始字节，调用方自行解析 JSON
+// apiErrorResponse FOFA API 通用错误响应字段
+type apiErrorResponse struct {
+	Error  bool   `json:"error"`
+	ErrMsg string `json:"errmsg"`
+}
+
+
+// do 发送单次 HTTP 请求，并在 errmsg 提示请求过快时按配置重试
 func (c *Client) do(ctx context.Context, fullURL string) ([]byte, error) {
 	delays := c.retryDelays()
 	maxAttempts := 1
@@ -86,27 +93,22 @@ func (c *Client) do(ctx context.Context, fullURL string) ([]byte, error) {
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			lastErr = errors.Wrap(err, "发送请求失败")
-			if attempt < len(delays) && ctx.Err() == nil {
-				time.Sleep(delays[attempt])
-				continue
-			}
-			return nil, lastErr
+			return nil, errors.Wrap(err, "发送请求失败")
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			lastErr = errors.Wrap(err, "读取响应失败")
-			if attempt < len(delays) && ctx.Err() == nil {
-				time.Sleep(delays[attempt])
-				continue
-			}
-			return nil, lastErr
+			return nil, errors.Wrap(err, "读取响应失败")
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+			return nil, fmt.Errorf("API 请求失败，状态码: %d, 响应: %s", resp.StatusCode, string(body))
+		}
+
+		var apiResp apiErrorResponse
+		if json.Unmarshal(body, &apiResp) == nil && apiResp.Error && isRateLimitErrmsg(apiResp.ErrMsg) {
+			lastErr = fmt.Errorf("FOFA API 请求过快: %s", apiResp.ErrMsg)
 			if attempt < len(delays) && ctx.Err() == nil {
 				time.Sleep(delays[attempt])
 				continue

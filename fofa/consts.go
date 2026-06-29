@@ -1,5 +1,19 @@
 package fofa
 
+import (
+	"strings"
+)
+
+// ErrCodeRateLimit FOFA 请求过快错误码
+const ErrCodeRateLimit = "45012"
+
+// isRateLimitErrmsg 判断 FOFA 业务层 errmsg 是否为请求过快
+func isRateLimitErrmsg(msg string) bool {
+	return strings.Contains(msg, ErrCodeRateLimit) ||
+		strings.Contains(msg, "请求速度过快") ||
+		strings.Contains(msg, "请求太快")
+}
+
 // SearchFieldsFree 免费版可用的查询字段（34个）
 const SearchFieldsFree = "ip,port,protocol,country,country_name,region,city," +
 	"longitude,latitude,asn,org,host,domain,os,server," +
