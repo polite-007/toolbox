@@ -19,7 +19,9 @@ type Stats2Response struct {
 	Content []string
 }
 
-// Stats2 使用search加改造fofa语句的逻辑来获取某个字段的聚合结果, 注意这个返回的字段不是size为倒序的，是随机的以更新时间为倒序的
+// Stats2 使用search加改造fofa语句的逻辑来获取某个字段的聚合结果,
+// 注意这个返回的字段不是size为倒序的，是随机的以更新时间为倒序的，且无法获取每个内容的具体数量
+// 旨在通过消耗search额度来部分实现stats功能
 func (c *Client) Stats2(req *Stats2Request) (*Stats2Response, error) {
 	if req.Query == "" {
 		return nil, errors.New("查询语句不能为空")
@@ -29,21 +31,20 @@ func (c *Client) Stats2(req *Stats2Request) (*Stats2Response, error) {
 		return nil, errors.New("统计字段不能为空")
 	}
 
-	// 设置默认最大数量
-	maxCount := req.MaxCount
-	if maxCount <= 0 {
-		maxCount = 5 // 默认上限5个
-	}
-
-	if maxCount > 10 {
-		maxCount = 10 // 最大上限10个
-	}
-
 	// 使用指定的字段
 	targetField := strings.TrimSpace(req.Fields)
 
 	var allValues []string
-	currentQuery := req.Query
+
+	var currentQuery string
+
+	switch targetField {
+	case "protocol":
+		currentQuery = fmt.Sprintf(`type=service && %s `, req.Query)
+	default:
+		currentQuery = req.Query
+	}
+
 	seenValues := make(map[string]bool) // 用于去重
 
 	// 循环查询，直到没有结果
@@ -99,11 +100,6 @@ func (c *Client) Stats2(req *Stats2Request) (*Stats2Response, error) {
 			}
 			seenValues[fieldValue] = true
 			allValues = append(allValues, fieldValue)
-
-			// 检查是否达到最大数量限制
-			if len(allValues) >= maxCount {
-				break
-			}
 
 			// 修改查询语句，添加排除条件
 			// 转义字段值中的特殊字符（如引号）

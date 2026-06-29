@@ -1,6 +1,7 @@
 package fofa
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -63,11 +64,11 @@ func TestClient_Search_Personal(t *testing.T) {
 	fmt.Printf("总记录数: %d\n", resp.Size)
 	fmt.Printf("返回字段数: %d\n", len(resp.Fields))
 
-	for i, r := range resp.GetResults() {
-		fmt.Printf("--- 结果 %d ---\n", i+1)
-		fmt.Printf("  IP: %s, Port: %s, Host: %s\n", r.IP, r.Port, r.Host)
-		fmt.Printf("  HeaderHash: %s, BannerHash: %s, BannerFid: %s\n", r.HeaderHash, r.BannerHash, r.BannerFid)
+	jsonResult, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("JSON 序列化失败: %v", err)
 	}
+	fmt.Printf("JSON 结果: \n%s\n", string(jsonResult))
 }
 
 // TestClient_Search_Professional 测试专业版字段查询

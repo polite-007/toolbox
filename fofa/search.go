@@ -109,7 +109,6 @@ func (s *SearchResult) GetContentByFields(fields string) []string {
 	return values
 }
 
-
 // GetResults 将Results转化成可直接使用的结构体
 func (s *SearchResponse) GetResults() []*SearchResult {
 	records := make([]*SearchResult, 0, len(s.Fields))
@@ -118,7 +117,6 @@ func (s *SearchResponse) GetResults() []*SearchResult {
 	}
 	return records
 }
-
 
 // Search 执行搜索查询
 func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
@@ -134,7 +132,7 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 		req.Page = 1
 	}
 	if req.Fields == "" {
-		req.Fields = "ip,port,host"
+		req.Fields = "ip,port"
 	}
 
 	// 检查查询字段不得少于2个
@@ -197,4 +195,3 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 
 	return &searchResp, nil
 }
-

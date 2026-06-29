@@ -14,11 +14,11 @@ const (
 	// FOFA API 基础地址
 	BaseURL = "https://fofa.info" // 字符串末尾不带斜杠
 	// 默认查询超时时间
-	DefaultSearchTimeout = 30 * time.Second
+	DefaultSearchTimeout = 65 * time.Second
 	// 默认聚合查询时间
-	DefaultStatsTimeout = 90 * time.Second
+	DefaultStatsTimeout = 300 * time.Second
 	// 默认轻量请求超时时间（account 等）
-	DefaultAccountTimeout = 10 * time.Second
+	DefaultAccountTimeout = 30 * time.Second
 	// 默认重试次数
 	DefaultRetryCount = 3
 	// 默认重试基础间隔（秒）
@@ -42,6 +42,9 @@ func NewClient(email, key string, opts ...Option) *Client {
 	cfg.key = key
 	for _, opt := range opts {
 		opt(cfg)
+	}
+	if cfg.httpClient == nil {
+		cfg.httpClient = newHTTPClient(cfg.proxy)
 	}
 	return &Client{
 		email:         cfg.email,

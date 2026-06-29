@@ -11,12 +11,12 @@ func TestClient_Stats2_Protocol(t *testing.T) {
 		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
 	}
 
-	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
+	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"),  WithProxy("http://127.0.0.1:8080"))
 
 	resp, err := client.Stats2(&Stats2Request{
-		Query:    `title="login"`,
+		Query:    `domain="baidu.com"`,
 		Fields:   "protocol",
-		MaxCount: 5,
+		MaxCount: 20,
 	})
 	if err != nil {
 		t.Fatalf("统计失败: %v", err)
