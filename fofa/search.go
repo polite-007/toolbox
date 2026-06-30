@@ -128,21 +128,10 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 	if req.Size <= 0 {
 		req.Size = 500
 	}
-	if req.Page <= 0 {
-		req.Page = 1
-	}
 	if req.Fields == "" {
 		req.Fields = "ip,port"
 	}
-
-	// 检查查询字段不得少于2个
-	if len(strings.Split(req.Fields, ",")) < 2 {
-		if req.Fields == "ip" {
-			req.Fields += ",port"
-		} else {
-			req.Fields += ",ip"
-		}
-	}
+	req.Fields = ensureMinFields(req.Fields)
 
 	// 对查询语句进行 base64 编码
 	qbase64 := base64.StdEncoding.EncodeToString([]byte(req.Query))
@@ -184,14 +173,7 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 	}
 
 	// 保存字段名列表，用于后续的 GetResults() 方法
-	fields := strings.Split(req.Fields, ",")
-	searchResp.Fields = make([]string, 0, len(fields))
-	for _, field := range fields {
-		field = strings.TrimSpace(field)
-		if field != "" {
-			searchResp.Fields = append(searchResp.Fields, field)
-		}
-	}
+	searchResp.Fields = splitFields(req.Fields)
 
 	return &searchResp, nil
 }

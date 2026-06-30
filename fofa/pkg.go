@@ -91,3 +91,26 @@ func getFieldValue(result *SearchResult, fieldName string) string {
 	// 如果找不到匹配的字段，返回空字符串
 	return ""
 }
+
+
+func ensureMinFields(fields string) string {
+	if len(strings.Split(fields, ",")) >= 2 {
+		return fields
+	}
+	if strings.TrimSpace(fields) == "ip" {
+		return fields + ",port"
+	}
+	return fields + ",ip"
+}
+
+func splitFields(fields string) []string {
+	parts := strings.Split(fields, ",")
+	result := make([]string, 0, len(parts))
+	for _, field := range parts {
+		field = strings.TrimSpace(field)
+		if field != "" {
+			result = append(result, field)
+		}
+	}
+	return result
+}
