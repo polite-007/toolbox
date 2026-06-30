@@ -11,7 +11,7 @@ import (
 // 示例：生成 Excel 文件，支持多 Sheet、表头和数据行
 func ExampleGenerateExcelToFile() {
 	// 定义表格数据：每个 SheetData 表示一个工作表
-	sheets := []xlsx.SheetData{
+	sheets := []*xlsx.SheetData{
 		{
 			SheetName: "Users",                                        // 工作表名称
 			Titles:    []string{"Name", "Age", "Email"},               // 表头

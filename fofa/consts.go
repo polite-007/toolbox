@@ -38,3 +38,23 @@ const SearchFieldsBusiness = SearchFieldsProfessional +
 // SearchFieldsEnterprise 企业版可用的查询字段（51个，含商业版）
 const SearchFieldsEnterprise = SearchFieldsBusiness +
 	",icon,fid,structinfo"
+
+const SearchFieldsFreeCN = "ip地址,端口,协议名,国家代码,国家名,区域,城市," +
+	"地理位置 经度,地理位置 纬度,asn编号,asn组织,主机名,域名,操作系统,网站server," +
+	"icp备案号,网站标题,jarm 指纹,网站header,协议 banner,证书,基础协议 比如tcp/udp,资产URL链接," +
+	"证书颁发者组织,证书颁发者通用名称,证书持有者组织,证书持有者通用名称," +
+	"ja3s指纹信息,tls协议版本,证书序列号,证书生效时间,证书到期时间," +
+	"证书中的根域名,http 状态码"
+
+const SearchFieldsPersonalCN = SearchFieldsFreeCN +
+	",http/https相应信息计算的hash值,协议相应信息的完整hash值,协议相应信息架构的指纹值,"
+
+const SearchFieldsProfessionalCN = SearchFieldsPersonalCN +
+	"域名cname,FOFA最后更新时间,产品名,产品分类"
+
+const SearchFieldsBusinessCN = SearchFieldsProfessionalCN +
+	",产品版本号,返回的icon_hash值,证书是否有效,cname的域名," +
+	"网站正文内容,证书颁发者和持有者是否相同,证书和域名是否匹配"
+
+const SearchFieldsEnterpriseCN = SearchFieldsBusinessCN +
+	",icon 图标,fid,结构化信息"

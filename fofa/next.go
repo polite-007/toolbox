@@ -125,17 +125,23 @@ func (c *Client) SearchNextAll(req *NextRequest, fn func(*NextResponse) error) e
 		if err != nil {
 			return err
 		}
-		if len(resp.Results) == 0 {
-			return nil
+		// 如果 API 返回错误信息，则直接返回错误
+		if resp.ErrMsg != "" {
+			return fmt.Errorf("FOFA API 错误: %s", resp.ErrMsg)
 		}
+		// 调用回调函数处理当前页数据
 		if err := fn(resp); err != nil {
 			return err
+		}
+		// 如果没有结果，则直接返回
+		if len(resp.Results) == 0 {
+			return nil
 		}
 		// 下一页游标为空，则表示没有更多数据
 		if !resp.HasMore() {
 			return nil
 		}
-		// 数据数量小于预期配置的数量
+		// 数据数量小于预期配置的数量, 代表最后一页
 		if len(resp.Results) < req.Size {
 			return nil
 		}

@@ -36,7 +36,7 @@ func setByRow(f *excelize.File, sheet string, row int, data []string) error {
 	return nil
 }
 
-func generateExcel(f *excelize.File, sheets []SheetData) error {
+func generateExcel(f *excelize.File, sheets []*SheetData) error {
 	for i, sheet := range sheets {
 		sheetName := sheet.SheetName
 		if sheetName == "" {
@@ -126,7 +126,7 @@ func columnIndexToName(index int) string {
 //
 // 返回值：
 // error: 如果操作过程中出现错误，则返回错误信息；否则返回nil
-func GenerateExcelToFile(fileName string, sheets []SheetData) error {
+func GenerateExcelToFile(fileName string, sheets []*SheetData) error {
 	f := excelize.NewFile()
 	defer func() {
 		if err := f.Close(); err != nil {
