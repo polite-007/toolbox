@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -176,4 +177,79 @@ func (c *Client) Search(req *SearchRequest) (*SearchResponse, error) {
 	searchResp.Fields = splitFields(req.Fields)
 
 	return &searchResp, nil
+}
+
+// SearchAll 逐页拉取同一查询的全部结果
+func (c *Client) SearchAll(req *SearchRequest, fn func(*SearchResponse) error) error {
+	if req == nil {
+		return errors.New("请求参数不能为空")
+	}
+	if fn == nil {
+		return errors.New("回调函数不能为空")
+	}
+
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	pageSize := req.Size
+	if pageSize <= 0 {
+		pageSize = 500
+	}
+
+	for {
+		if err := contextErr(req.Ctx); err != nil {
+			return err
+		}
+
+		resp, err := c.searchWithRetry(req, page)
+		if err != nil {
+			return err
+		}
+		if err := fn(resp); err != nil {
+			return err
+		}
+		if len(resp.Results) == 0 {
+			return nil
+		}
+		if len(resp.Results) < pageSize {
+			return nil
+		}
+
+		page++
+	}
+}
+
+func (c *Client) searchWithRetry(req *SearchRequest, page int) (*SearchResponse, error) {
+	delays := c.retryDelays()
+	maxAttempts := 1
+	if len(delays) > 0 {
+		maxAttempts = len(delays) + 1
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := contextErr(req.Ctx); err != nil {
+			return nil, err
+		}
+
+		pageReq := *req
+		pageReq.Page = page
+
+		resp, err := c.Search(&pageReq)
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
+		if !isRetryableNextErr(err) || attempt >= maxAttempts-1 {
+			return nil, err
+		}
+		if attempt < len(delays) {
+			time.Sleep(delays[attempt])
+		}
+	}
+
+	return nil, lastErr
 }

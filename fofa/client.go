@@ -32,8 +32,8 @@ type Client struct {
 	key           string        // FOFA API Key
 	baseURL       string        // API 基础地址
 	httpClient    *http.Client  // HTTP 客户端（不设全局超时，由 context 控制）
-	retryCount    int           // 请求过快时的重试次数，默认 3，设为 0 则不重试
-	retryInterval time.Duration // 请求过快时首次重试间隔，后续每次翻倍，默认 1s
+	retryCount    int           // 请求过快时/使用all函数拉取数据，重试次数，默认 3，设为 0 则不重试
+	retryInterval time.Duration // 请求过快时/使用all函数拉取数据，首次重试间隔，后续每次翻倍，默认 1s
 }
 
 // NewClient 创建新的 FOFA 客户端，支持通过 Option 函数自定义配置
@@ -74,7 +74,6 @@ type apiErrorResponse struct {
 	Error  bool   `json:"error"`
 	ErrMsg string `json:"errmsg"`
 }
-
 
 // do 发送单次 HTTP 请求，并在 errmsg 提示请求过快时按配置重试
 func (c *Client) do(ctx context.Context, fullURL string) ([]byte, error) {

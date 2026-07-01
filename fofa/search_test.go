@@ -1,172 +1,275 @@
 package fofa
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strconv"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/pkg/errors"
 )
 
-// TestClient_Search_Free 测试免费版字段查询
-func TestClient_Search_Free(t *testing.T) {
-	if os.Getenv("FOFA_EMAIL") == "" || os.Getenv("FOFA_KEY") == "" {
-		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
-	}
+func TestClient_SearchAll_MultiPageAndRequestImmutability(t *testing.T) {
+	t.Parallel()
 
-	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
+	var (
+		mu          sync.Mutex
+		seenPages   []string
+		seenSizes   []string
+		seenFields  []string
+		seenQueries []string
+		callCount   int
+	)
 
-	req := &SearchRequest{
-		Query:  `title="login" && status_code="200"`,
-		Size:   3,
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		callCount++
+		page := r.URL.Query().Get("page")
+		size := r.URL.Query().Get("size")
+		fields := r.URL.Query().Get("fields")
+		seenPages = append(seenPages, page)
+		seenSizes = append(seenSizes, size)
+		seenFields = append(seenFields, fields)
+		seenQueries = append(seenQueries, mustDecodeQuery(t, r.URL.Query().Get("qbase64")))
+		mu.Unlock()
+
+		var payload map[string]any
+		switch page {
+		case "2":
+			payload = searchAllResponse(page, 2, "app.example", "443")
+		default:
+			payload = searchAllResponse("1", 2, "www.example", "80")
+		}
+
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("tester@example.com", "secret", WithBaseURL(server.URL), WithRetryCount(0))
+	original := &SearchRequest{
+		Query:  `title="login"`,
 		Page:   1,
-		Fields: SearchFieldsFree,
+		Size:   1,
+		Fields: "title",
+	}
+	before := *original
+
+	var got []*SearchResult
+	err := client.SearchAll(original, func(resp *SearchResponse) error {
+		got = append(got, resp.GetResults()...)
+		if len(got) == 1 {
+			return nil
+		}
+		return errors.New("stop iteration")
+	})
+	if err == nil || err.Error() != "stop iteration" {
+		t.Fatalf("SearchAll returned error = %v, want stop iteration", err)
 	}
 
-	resp, err := client.Search(req)
-	if err != nil {
-		t.Fatalf("搜索失败: %v", err)
+	if !reflect.DeepEqual(*original, before) {
+		t.Fatalf("SearchAll mutated request: got %+v want %+v", *original, before)
 	}
-
-	fmt.Printf("=== 免费版字段查询 ===\n")
-	fmt.Printf("查询: %s\n", resp.Query)
-	fmt.Printf("总记录数: %d\n", resp.Size)
-	fmt.Printf("返回字段数: %d\n", len(resp.Fields))
-
-	for i, r := range resp.GetResults() {
-		fmt.Printf("--- 结果 %d ---\n", i+1)
-		fmt.Printf("  IP: %s, Port: %s, Host: %s\n", r.IP, r.Port, r.Host)
-		fmt.Printf("  Title: %s, Protocol: %s\n", r.Title, r.Protocol)
+	if callCount != 2 {
+		t.Fatalf("SearchAll request count = %d, want 2", callCount)
+	}
+	if !reflect.DeepEqual(seenPages, []string{"1", "2"}) {
+		t.Fatalf("SearchAll pages = %v, want [1 2]", seenPages)
+	}
+	if !reflect.DeepEqual(seenSizes, []string{"1", "1"}) {
+		t.Fatalf("SearchAll sizes = %v, want [1 1]", seenSizes)
+	}
+	if !reflect.DeepEqual(seenFields, []string{"title,ip,port", "title,ip,port"}) {
+		t.Fatalf("SearchAll fields = %v, want [title,ip,port title,ip,port]", seenFields)
+	}
+	if !reflect.DeepEqual(seenQueries, []string{`title="login"`, `title="login"`}) {
+		t.Fatalf("SearchAll queries = %v, want repeated original query", seenQueries)
+	}
+	if len(got) != 2 {
+		t.Fatalf("SearchAll callback results = %d, want 2", len(got))
+	}
+	if got[0].Host != "www.example" || got[1].Host != "app.example" {
+		t.Fatalf("SearchAll hosts = [%s %s], want [www.example app.example]", got[0].Host, got[1].Host)
 	}
 }
 
-// TestClient_Search_Personal 测试个人版字段查询
-func TestClient_Search_Personal(t *testing.T) {
-	if os.Getenv("FOFA_EMAIL") == "" || os.Getenv("FOFA_KEY") == "" {
-		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
-	}
+func TestClient_SearchAll_DefaultPageAndDefaultSize(t *testing.T) {
+	t.Parallel()
 
-	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
+	var (
+		pageValue  string
+		sizeValue  string
+		callCount  int
+		fieldValue string
+	)
 
-	req := &SearchRequest{
-		Query:  `title="login" && status_code="200"`,
-		Size:   3,
-		Page:   1,
-		Fields: SearchFieldsPersonal,
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		pageValue = r.URL.Query().Get("page")
+		sizeValue = r.URL.Query().Get("size")
+		fieldValue = r.URL.Query().Get("fields")
 
-	resp, err := client.Search(req)
+		if err := json.NewEncoder(w).Encode(searchAllResponse("1", 500, "www.example", "80")); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("tester@example.com", "secret", WithBaseURL(server.URL), WithRetryCount(0))
+
+	err := client.SearchAll(&SearchRequest{Query: `title="dashboard"`}, func(resp *SearchResponse) error {
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("搜索失败: %v", err)
+		t.Fatalf("SearchAll returned error: %v", err)
 	}
 
-	fmt.Printf("=== 个人版字段查询 ===\n")
-	fmt.Printf("查询: %s\n", resp.Query)
-	fmt.Printf("总记录数: %d\n", resp.Size)
-	fmt.Printf("返回字段数: %d\n", len(resp.Fields))
-
-	jsonResult, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("JSON 序列化失败: %v", err)
+	if callCount != 1 {
+		t.Fatalf("SearchAll request count = %d, want 1", callCount)
 	}
-	fmt.Printf("JSON 结果: \n%s\n", string(jsonResult))
-}
-
-// TestClient_Search_Professional 测试专业版字段查询
-func TestClient_Search_Professional(t *testing.T) {
-	if os.Getenv("FOFA_EMAIL") == "" || os.Getenv("FOFA_KEY") == "" {
-		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
+	if pageValue != "1" {
+		t.Fatalf("SearchAll default page = %q, want %q", pageValue, "1")
 	}
-
-	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
-
-	req := &SearchRequest{
-		Query:  `title="login" && status_code="200"`,
-		Size:   3,
-		Page:   1,
-		Fields: SearchFieldsProfessional,
+	if sizeValue != "500" {
+		t.Fatalf("SearchAll default size = %q, want %q", sizeValue, "500")
 	}
-
-	resp, err := client.Search(req)
-	if err != nil {
-		t.Fatalf("搜索失败: %v", err)
-	}
-
-	fmt.Printf("=== 专业版字段查询 ===\n")
-	fmt.Printf("查询: %s\n", resp.Query)
-	fmt.Printf("总记录数: %d\n", resp.Size)
-	fmt.Printf("返回字段数: %d\n", len(resp.Fields))
-
-	for i, r := range resp.GetResults() {
-		fmt.Printf("--- 结果 %d ---\n", i+1)
-		fmt.Printf("  IP: %s, Port: %s, Host: %s\n", r.IP, r.Port, r.Host)
-		fmt.Printf("  Product: %s, Cname: %s\n", r.Product, r.Cname)
-		fmt.Printf("  LastUpdateTime: %s\n", r.Lastupdatetime)
+	if fieldValue != "ip,port" {
+		t.Fatalf("SearchAll default fields = %q, want %q", fieldValue, "ip,port")
 	}
 }
 
-// TestClient_Search_Business 测试商业版字段查询
-func TestClient_Search_Business(t *testing.T) {
-	if os.Getenv("FOFA_EMAIL") == "" || os.Getenv("FOFA_KEY") == "" {
-		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
-	}
+func TestClient_SearchAll_RetryOnceThenSucceed(t *testing.T) {
+	t.Parallel()
 
-	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
+	var callCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"error":  true,
+				"errmsg": "请求太快啦，请稍后再试",
+			}); err != nil {
+				t.Fatalf("encode rate-limit response: %v", err)
+			}
+			return
+		}
 
-	req := &SearchRequest{
-		Query:  `title="login" && status_code="200"`,
-		Size:   3,
-		Page:   1,
-		Fields: SearchFieldsBusiness,
-	}
+		if err := json.NewEncoder(w).Encode(searchAllResponse("1", 1, "retry.example", "443")); err != nil {
+			t.Fatalf("encode success response: %v", err)
+		}
+	}))
+	defer server.Close()
 
-	resp, err := client.Search(req)
+	client := NewClient(
+		"tester@example.com",
+		"secret",
+		WithBaseURL(server.URL),
+		WithRetryCount(1),
+		WithRetryInterval(10*time.Millisecond),
+	)
+
+	var callbackCalls int
+	err := client.SearchAll(&SearchRequest{Query: `title="retry"`, Size: 1}, func(resp *SearchResponse) error {
+		callbackCalls++
+		if len(resp.GetResults()) != 1 {
+			t.Fatalf("SearchAll callback results = %d, want 1", len(resp.GetResults()))
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("搜索失败: %v", err)
+		t.Fatalf("SearchAll returned error: %v", err)
 	}
 
-	fmt.Printf("=== 商业版字段查询 ===\n")
-	fmt.Printf("查询: %s\n", resp.Query)
-	fmt.Printf("总记录数: %d\n", resp.Size)
-	fmt.Printf("返回字段数: %d\n", len(resp.Fields))
-
-	for i, r := range resp.GetResults() {
-		fmt.Printf("--- 结果 %d ---\n", i+1)
-		fmt.Printf("  IP: %s, Port: %s, Host: %s\n", r.IP, r.Port, r.Host)
-		fmt.Printf("  Product: %s, ProductVersion: %s\n", r.Product, r.ProductVersion)
-		fmt.Printf("  IconHash: %s, CertIsValid: %s\n", r.IconHash, r.CertIsValid)
+	if callCount != 2 {
+		t.Fatalf("SearchAll request count = %d, want 2", callCount)
+	}
+	if callbackCalls != 1 {
+		t.Fatalf("SearchAll callback calls = %d, want 1", callbackCalls)
 	}
 }
 
-// TestClient_Search_Enterprise 测试企业版字段查询
-func TestClient_Search_Enterprise(t *testing.T) {
-	if os.Getenv("FOFA_EMAIL") == "" || os.Getenv("FOFA_KEY") == "" {
-		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
+func TestClient_SearchAll_CallbackCancellation(t *testing.T) {
+	t.Parallel()
+
+	var callCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if err := json.NewEncoder(w).Encode(searchAllResponse("1", 1, "cancel.example", "443")); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("tester@example.com", "secret", WithBaseURL(server.URL), WithRetryCount(0))
+
+	stopErr := errors.New("stop iteration")
+	err := client.SearchAll(&SearchRequest{Query: `title="cancel"`, Size: 1}, func(resp *SearchResponse) error {
+		return stopErr
+	})
+	if !errors.Is(err, stopErr) {
+		t.Fatalf("SearchAll returned error = %v, want stop iteration", err)
 	}
-
-	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
-
-	req := &SearchRequest{
-		Query:  `title="login" && status_code="200"`,
-		Size:   3,
-		Page:   1,
-		Fields: SearchFieldsEnterprise,
+	if callCount != 1 {
+		t.Fatalf("SearchAll request count = %d, want 1", callCount)
 	}
+}
 
-	resp, err := client.Search(req)
+func TestClient_SearchAll_CallbackErrorPropagation(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(searchAllResponse("1", 1, "err.example", "443")); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("tester@example.com", "secret", WithBaseURL(server.URL), WithRetryCount(0))
+	wantErr := fmt.Errorf("callback failed")
+
+	err := client.SearchAll(&SearchRequest{Query: `title="error"`, Size: 1}, func(resp *SearchResponse) error {
+		return wantErr
+	})
+	if err == nil {
+		t.Fatal("SearchAll error = nil, want callback error")
+	}
+	if err != wantErr {
+		t.Fatalf("SearchAll error = %v, want %v", err, wantErr)
+	}
+}
+
+func mustDecodeQuery(t *testing.T, encoded string) string {
+	t.Helper()
+
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		t.Fatalf("搜索失败: %v", err)
+		t.Fatalf("decode qbase64 %q: %v", encoded, err)
 	}
+	return string(decoded)
+}
 
-	fmt.Printf("=== 企业版字段查询 ===\n")
-	fmt.Printf("查询: %s\n", resp.Query)
-	fmt.Printf("总记录数: %d\n", resp.Size)
-	fmt.Printf("返回字段数: %d\n", len(resp.Fields))
-
-	for i, r := range resp.GetResults() {
-		fmt.Printf("--- 结果 %d ---\n", i+1)
-		fmt.Printf("  IP: %s, Port: %s, Host: %s\n", r.IP, r.Port, r.Host)
-		fmt.Printf("  Product: %s, ProductVersion: %s\n", r.Product, r.ProductVersion)
-		fmt.Printf("  Icon: %s, FID: %s\n", r.Icon, r.FID)
-		fmt.Printf("  Structinfo: %s\n", r.Structinfo)
+func searchAllResponse(page string, size int, host, port string) map[string]any {
+	return map[string]any{
+		"error": false,
+		"mode":  "extended",
+		"page":  mustAtoi(page),
+		"size":  size,
+		"query": "mock-query",
+		"results": [][]string{{host, port}},
 	}
+}
+
+func mustAtoi(value string) int {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		panic(err)
+	}
+	return n
 }

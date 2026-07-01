@@ -14,6 +14,38 @@ func isRateLimitErrmsg(msg string) bool {
 		strings.Contains(msg, "请求太快")
 }
 
+// isNextExpiredErrmsg 判断 errmsg 是否表示 next 游标已失效
+func isNextExpiredErrmsg(msg string) bool {
+	return strings.Contains(msg, "过期") ||
+		strings.Contains(msg, "失效") ||
+		strings.Contains(msg, "游标") ||
+		strings.Contains(msg, "nextid")
+}
+
+// isRetryableNextErr 判断连续翻页过程中是否值得对同一 next 游标重试
+func isRetryableNextErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if isNextExpiredErrmsg(msg) {
+		return false
+	}
+	if isRateLimitErrmsg(msg) {
+		return true
+	}
+	if strings.Contains(msg, "发送请求失败") ||
+		strings.Contains(msg, "读取响应失败") ||
+		strings.Contains(msg, "连续翻页请求失败") ||
+		strings.Contains(msg, "解析响应 JSON 失败") {
+		return true
+	}
+	if strings.Contains(msg, "状态码: 5") {
+		return true
+	}
+	return false
+}
+
 // SearchFieldsFree 免费版可用的查询字段（34个）
 const SearchFieldsFree = "ip,port,protocol,country,country_name,region,city," +
 	"longitude,latitude,asn,org,host,domain,os,server," +

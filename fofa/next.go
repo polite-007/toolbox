@@ -7,8 +7,16 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
+)
+
+const (
+	// DefaultNextTokenTTL FOFA 连续翻页 next 游标有效期
+	DefaultNextTokenTTL = 15 * time.Minute
+	// nextTokenSafetyMargin 游标过期安全余量，提前结束避免临界失效
+	nextTokenSafetyMargin = 30 * time.Second
 )
 
 // NextRequest 连续翻页请求参数
@@ -107,7 +115,7 @@ func (c *Client) SearchNext(req *NextRequest) (*NextResponse, error) {
 
 // SearchNextAll 连续翻页拉取同一查询的全部结果
 // fn 每收到一页数据调用一次；返回 error 可中止后续翻页
-// 容错处理，因为fofa接口非常干，非常不稳定，因此增加冗余的错误处理，来对抗fofa的不稳定
+// 单页失败时对同一 next 游标重试；next 游标有效期约 15 分钟，超时后需重新发起查询
 func (c *Client) SearchNextAll(req *NextRequest, fn func(*NextResponse) error) error {
 	if req == nil {
 		return errors.New("请求参数不能为空")
@@ -117,34 +125,100 @@ func (c *Client) SearchNextAll(req *NextRequest, fn func(*NextResponse) error) e
 	}
 
 	nextToken := req.Next
+	nextTokenAt := time.Time{}
+	if nextToken != "" {
+		nextTokenAt = time.Now()
+	}
+
 	for {
+		if err := contextErr(req.Ctx); err != nil {
+			return err
+		}
+		if err := checkNextTokenExpired(nextToken, nextTokenAt); err != nil {
+			return err
+		}
+
+		resp, err := c.searchNextWithRetry(req, nextToken)
+		if err != nil {
+			return err
+		}
+
+		// 收到 next 游标后立即记录时间，避免 fn 处理耗时挤占 15 分钟有效期
+		pageNext := resp.Next
+		pageNextAt := time.Time{}
+		if resp.HasMore() {
+			pageNextAt = time.Now()
+		}
+
+		if err := fn(resp); err != nil {
+			return err
+		}
+		if len(resp.Results) == 0 {
+			return nil
+		}
+		if !resp.HasMore() {
+			return nil
+		}
+		if len(resp.Results) < req.Size {
+			return nil
+		}
+
+		nextToken = pageNext
+		nextTokenAt = pageNextAt
+	}
+}
+
+// searchNextWithRetry 对同一 next 游标重试，应对 FOFA 偶发网络/5xx/限速等问题
+func (c *Client) searchNextWithRetry(req *NextRequest, nextToken string) (*NextResponse, error) {
+	delays := c.retryDelays()
+	maxAttempts := 1
+	if len(delays) > 0 {
+		maxAttempts = len(delays) + 1
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := contextErr(req.Ctx); err != nil {
+			return nil, err
+		}
+
 		pageReq := *req
 		pageReq.Next = nextToken
 
 		resp, err := c.SearchNext(&pageReq)
-		if err != nil {
-			return err
+		if err == nil {
+			return resp, nil
 		}
-		// 如果 API 返回错误信息，则直接返回错误
-		if resp.ErrMsg != "" {
-			return fmt.Errorf("FOFA API 错误: %s", resp.ErrMsg)
+
+		lastErr = err
+		if isNextExpiredErrmsg(err.Error()) {
+			return nil, fmt.Errorf("next 游标已失效（有效期 %v）: %w", DefaultNextTokenTTL, err)
 		}
-		// 调用回调函数处理当前页数据
-		if err := fn(resp); err != nil {
-			return err
+		if !isRetryableNextErr(err) || attempt >= maxAttempts-1 {
+			return nil, err
 		}
-		// 如果没有结果，则直接返回
-		if len(resp.Results) == 0 {
-			return nil
+		if attempt < len(delays) {
+			time.Sleep(delays[attempt])
 		}
-		// 下一页游标为空，则表示没有更多数据
-		if !resp.HasMore() {
-			return nil
-		}
-		// 数据数量小于预期配置的数量, 代表最后一页
-		if len(resp.Results) < req.Size {
-			return nil
-		}
-		nextToken = resp.Next
 	}
+
+	return nil, lastErr
+}
+
+func checkNextTokenExpired(nextToken string, nextTokenAt time.Time) error {
+	if nextToken == "" || nextTokenAt.IsZero() {
+		return nil
+	}
+	ttl := DefaultNextTokenTTL - nextTokenSafetyMargin
+	if time.Since(nextTokenAt) >= ttl {
+		return fmt.Errorf("next 游标已过期（有效期 %v），请重新发起查询", DefaultNextTokenTTL)
+	}
+	return nil
+}
+
+func contextErr(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
 }
