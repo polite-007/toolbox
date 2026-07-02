@@ -282,3 +282,40 @@ func TestClient_Stats_ICP(t *testing.T) {
 		fmt.Printf("  %s: %d\n", r.Name, r.Count)
 	}
 }
+
+func TestClient_Stats_MultiFields(t *testing.T) {
+	if os.Getenv("FOFA_EMAIL") == "" || os.Getenv("FOFA_KEY") == "" {
+		t.Skip("跳过测试：请设置环境变量 FOFA_EMAIL 和 FOFA_KEY")
+	}
+
+	client := NewClient(os.Getenv("FOFA_EMAIL"), os.Getenv("FOFA_KEY"))
+
+	resp, err := client.Stats(&StatsRequest{
+		Query:  `domain=baidu.com`,
+		Fields: "protocol,port,country,server",
+		Size:   100,
+	})
+	if err != nil {
+		t.Fatalf("统计失败: %v", err)
+	}
+
+	fmt.Printf("=== 多字段统计 ===\n")
+	fmt.Printf("统计字段: %v\n", resp.Fields())
+	fmt.Printf("总记录数: %d\n", resp.Size)
+
+	// 一次性获取所有字段的统计结果
+	allResults := resp.GetAllResults()
+	for field, results := range allResults {
+		fmt.Printf("\n--- %s 统计 ---\n", field)
+		fmt.Printf("distinct: %d\n", resp.GetDistinct(field))
+		for _, r := range results {
+			fmt.Printf("  %s: %d\n", r.Name, r.Count)
+		}
+	}
+
+	// 也可单独获取某个字段
+	fmt.Printf("\n--- 单独获取 port ---\n")
+	for _, r := range resp.GetResults("port") {
+		fmt.Printf("  %s: %d\n", r.Name, r.Count)
+	}
+}

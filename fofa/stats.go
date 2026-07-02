@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -22,10 +23,27 @@ type StatsRequest struct {
 type StatsResponse struct {
 	Error    bool                   `json:"error"`    // 是否有错误
 	ErrMsg   string                 `json:"errmsg"`   // 错误信息
-	Distinct map[string]int         `json:"distinct"` // 统计结果，key为字段值，value为数量
-	Aggs     map[string]interface{} `json:"aggs"`     // 聚合结果（如果有）
-	Field    string                 // 统计字段列表，用于标识统计的字段
+	Distinct map[string]int         `json:"distinct"` // 唯一计数，key为字段名，value为去重后的数量
+	Aggs     map[string]interface{} `json:"aggs"`     // 聚合结果，key为字段名，value为该字段的统计列表
+	Field    string                 // 统计字段列表（逗号分隔），用于标识统计的字段
 	Size     int
+}
+
+// Fields 返回统计字段列表，按逗号拆分并去除空白项
+func (s *StatsResponse) Fields() []string {
+	return parseFields(s.Field)
+}
+
+// parseFields 将逗号分隔的字段字符串拆分为列表
+func parseFields(fields string) []string {
+	parts := strings.Split(fields, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 // StatsResult 单条统计结果
@@ -135,6 +153,24 @@ func (s *StatsResponse) GetResults(field string) []*StatsResult {
 	}
 
 	return results
+}
+
+// GetAllResults 一次性返回所有统计字段的统计结果，key 为字段名，value 为该字段的统计列表。
+// 当请求时传入多个字段（如 "protocol,port"）时，可一次取回全部聚合数据。
+func (s *StatsResponse) GetAllResults() map[string][]*StatsResult {
+	result := make(map[string][]*StatsResult, len(s.Aggs))
+	for _, field := range s.Fields() {
+		if r := s.GetResults(field); len(r) > 0 {
+			result[field] = r
+		}
+	}
+	return result
+}
+
+// GetAllDistinct 返回所有字段的唯一计数，直接返回 Distinct 映射。
+// 调用方应当只读，不应修改返回的 map。
+func (s *StatsResponse) GetAllDistinct() map[string]int {
+	return s.Distinct
 }
 
 // GetDistinct 获取唯一计数
