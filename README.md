@@ -18,8 +18,6 @@ go get github.com/polite-007/toolbox
 | **httpx** | `github.com/polite-007/toolbox/httpx` | HTTP 探测封装（基于 projectdiscovery/httpx） |
 | **xlsx** | `github.com/polite-007/toolbox/xlsx` | Excel 读写工具，支持多 Sheet、JSON 导出 |
 | **dig** | `github.com/polite-007/toolbox/dig` | DNS 查询工具，支持多记录类型、自定义 DNS 服务器 |
-| **goscanner** | `github.com/polite-007/toolbox/goscanner` | 漏洞扫描器封装（基于 goby/goscanner） |
-
 ## License
 
 [LICENSE](./LICENSE)
