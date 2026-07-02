@@ -20,6 +20,8 @@ const (
 	DefaultStatsTimeout = 300 * time.Second
 	// 默认轻量请求超时时间（account 等）
 	DefaultAccountTimeout = 30 * time.Second
+	// 默认 Host 聚合查询超时时间（接口限制 1s/次）
+	DefaultHostTimeout = 30 * time.Second
 	// 默认重试次数（仅针对 FOFA 请求过快 errmsg 重试）
 	DefaultRetryCount = 3
 	// 默认重试基础间隔（秒）
