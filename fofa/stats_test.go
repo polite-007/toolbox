@@ -165,6 +165,54 @@ func TestClient_Stats_Country(t *testing.T) {
 	fmt.Printf("总记录数: %d\n", resp.Size)
 	for _, r := range resp.GetResults("country") {
 		fmt.Printf("  %s: %d\n", r.Name, r.Count)
+		for _, reg := range r.Regions {
+			fmt.Printf("    - %s: %d\n", reg.Name, reg.Count)
+		}
+	}
+}
+
+// TestGetResults_CountryKeyMapping 不依赖网络，验证 country 字段
+// 在 aggs 中实际使用 countries 作为 key 的映射逻辑
+func TestGetResults_CountryKeyMapping(t *testing.T) {
+	resp := &StatsResponse{
+		Aggs: map[string]interface{}{
+			"countries": []interface{}{
+				map[string]interface{}{
+					"name":  "美国",
+					"count": float64(3182),
+					"regions": []interface{}{
+						map[string]interface{}{"name": "加利福尼亚", "count": float64(500)},
+						map[string]interface{}{"name": "纽约", "count": float64(300)},
+					},
+				},
+				map[string]interface{}{
+					"name":  "德国",
+					"count": float64(259),
+				},
+			},
+		},
+	}
+
+	results := resp.GetResults("country")
+	if len(results) != 2 {
+		t.Fatalf("期望返回 2 条结果，实际 %d 条", len(results))
+	}
+	if results[0].Name != "美国" || results[0].Count != 3182 {
+		t.Fatalf("第一条结果不匹配: %+v", results[0])
+	}
+	if len(results[0].Regions) != 2 {
+		t.Fatalf("期望 2 个区域，实际 %d 个", len(results[0].Regions))
+	}
+	if results[0].Regions[0].Name != "加利福尼亚" || results[0].Regions[0].Count != 500 {
+		t.Fatalf("区域信息不匹配: %+v", results[0].Regions[0])
+	}
+	if results[1].Name != "德国" || results[1].Count != 259 {
+		t.Fatalf("第二条结果不匹配: %+v", results[1])
+	}
+
+	// 不存在的字段应返回 nil
+	if got := resp.GetResults("protocol"); got != nil {
+		t.Fatalf("期望 protocol 字段返回 nil，实际 %+v", got)
 	}
 }
 

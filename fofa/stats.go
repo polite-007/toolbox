@@ -48,8 +48,27 @@ func parseFields(fields string) []string {
 
 // StatsResult 单条统计结果
 type StatsResult struct {
-	Name  string `json:"name"`  // 字段值
-	Count int    `json:"count"` // 该值出现的数量
+	Name    string         `json:"name"`              // 字段值
+	Count   int            `json:"count"`             // 该值出现的数量
+	Regions []StatsSubItem `json:"regions,omitempty"` // country 聚合时下钻的区域/城市统计
+}
+
+// StatsSubItem 子聚合条目，用于 country 下钻的 region/city
+type StatsSubItem struct {
+	Name  string `json:"name"`  // 子项名称（区域/城市）
+	Count int    `json:"count"` // 子项数量
+}
+
+// aggsKey 把请求字段名映射为 FOFA aggs 中实际的 key。
+// FOFA 在查询 country 时，aggs 中的 key 实际为 countries（复数），
+// 其余字段与请求字段同名。
+func aggsKey(field string) string {
+	switch field {
+	case "country":
+		return "countries"
+	default:
+		return field
+	}
 }
 
 // Stats 执行统计查询
@@ -118,8 +137,9 @@ func (s *StatsResponse) GetResults(field string) []*StatsResult {
 		queryField = field
 	}
 
-	// 从 Aggs 获取数据
-	aggsData, exists := s.Aggs[queryField]
+	// FOFA 部分字段在 aggs 中的 key 与请求字段名不一致（如 country -> countries）
+	aggKey := aggsKey(queryField)
+	aggsData, exists := s.Aggs[aggKey]
 	if !exists {
 		return nil
 	}
@@ -144,6 +164,30 @@ func (s *StatsResponse) GetResults(field string) []*StatsResult {
 		if v, ok := itemMap["count"]; ok {
 			if count, ok := v.(float64); ok {
 				result.Count = int(count)
+			}
+		}
+
+		// 解析 country 下钻的 regions（区域/城市）子聚合
+		if v, ok := itemMap["regions"]; ok {
+			if regions, ok := v.([]interface{}); ok {
+				for _, region := range regions {
+					regionMap, ok := region.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					sub := StatsSubItem{}
+					if rv, ok := regionMap["name"]; ok {
+						sub.Name = fmt.Sprintf("%v", rv)
+					}
+					if rv, ok := regionMap["count"]; ok {
+						if c, ok := rv.(float64); ok {
+							sub.Count = int(c)
+						}
+					}
+					if sub.Name != "" {
+						result.Regions = append(result.Regions, sub)
+					}
+				}
 			}
 		}
 
