@@ -1,11 +1,12 @@
-﻿package httpx_test
+package httpx_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/polite-007/toolbox/httpx"
-	"github.com/projectdiscovery/httpx/runner"
 )
 
 // 示例：创建 HTTP 探测客户端，配置线程数、技术检测、跟随重定向
@@ -45,9 +46,12 @@ func ExampleNewHttpxClient_headerMerge() {
 
 func TestRun(t *testing.T) {
 	client := httpx.NewHttpxClient(
-		httpx.WithProxy("http://127.0.0.1:8080"),
+	// httpx.WithProxy("http://127.0.0.1:8080"),
 	)
-	err := client.Run([]string{"a.fofa.info", "www.baidu.com", "www.fofa.info"}, func(r runner.Result) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	err := client.Run(ctx, []string{"http://45.136.15.66:42847/"}, func(r httpx.Result) {
 		if r.Err != nil {
 			fmt.Println(r.Err)
 			return

@@ -1,4 +1,4 @@
-﻿package httpx
+package httpx
 
 import (
 	"github.com/projectdiscovery/httpx/common/customheader"
@@ -22,7 +22,7 @@ func NewHttpxClient(opts ...Option) *HttpxClient {
 
 // toRunnerOptions 将用户 Config 转换为上游 runner.Options
 // 集中管理与上游库的映射，上游 API 变动只需修改此函数
-func (c *HttpxClient) toRunnerOptions(targets []string, onResult func(r runner.Result)) *runner.Options {
+func (c *HttpxClient) toRunnerOptions(targets []string, onResult func(r Result)) *runner.Options {
 	cfg := c.config
 
 	opts := &runner.Options{
@@ -54,10 +54,16 @@ func (c *HttpxClient) toRunnerOptions(targets []string, onResult func(r runner.R
 		HostMaxErrors: 30,
 		RandomAgent:   true,
 
+		// 库默认静默，不修改全局 gologger
+		Silent:        true,
+		DisableStdout: true,
+
 		// 运行时注入
 		InputTargetHost: targets,
-		OnResult:        onResult,
-		ShowStatistics:  cfg.ShowStatistics,
+		OnResult: func(native runner.Result) {
+			onResult(toResult(native))
+		},
+		ShowStatistics: cfg.ShowStatistics,
 	}
 
 	if len(cfg.Ports) > 0 {
