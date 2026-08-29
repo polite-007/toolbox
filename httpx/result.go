@@ -43,10 +43,15 @@ type Result struct {
 	Error         string    // 错误信息字符串
 	Failed        bool      // 是否探测失败
 	Err           error     // 探测错误
+	ResponseBody  string    // 响应体（截取前 4KB）
+	SubjectCN     string    // TLS 证书 Subject Common Name
+	SubjectOrg    []string  // TLS 证书 Subject Organization
 }
 
+const maxResponseBodyPreview = 4 * 1024
+
 func toResult(native runner.Result) Result {
-	return Result{
+	result := Result{
 		Timestamp:     native.Timestamp,
 		Input:         native.Input,
 		URL:           native.URL,
@@ -82,4 +87,21 @@ func toResult(native runner.Result) Result {
 		Failed:        native.Failed,
 		Err:           native.Err,
 	}
+
+	// 响应体：从 Response.Data 截取前 4KB
+	if native.Response != nil && len(native.Response.Data) > 0 {
+		data := native.Response.Data
+		if len(data) > maxResponseBodyPreview {
+			data = data[:maxResponseBodyPreview]
+		}
+		result.ResponseBody = string(data)
+	}
+
+	// TLS 证书 Subject 信息
+	if native.TLSData != nil {
+		result.SubjectCN = native.TLSData.SubjectCN
+		result.SubjectOrg = append([]string(nil), native.TLSData.SubjectOrg...)
+	}
+
+	return result
 }
