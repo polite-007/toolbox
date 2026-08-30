@@ -70,6 +70,13 @@ func WithPorts(ports string) Option {
 	}
 }
 
+// WithTopPorts 设置常用端口表规模（如 "100"、"1000"、"full"），仅当未设置 Ports 时生效。
+func WithTopPorts(topPorts string) Option {
+	return func(c *Config) {
+		c.TopPorts = topPorts
+	}
+}
+
 // WithSynScan 使用 SYN 扫描，通常需要管理员/root 权限。
 func WithSynScan() Option {
 	return func(c *Config) {

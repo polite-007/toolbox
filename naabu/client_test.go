@@ -278,7 +278,7 @@ func isNetworkLikeError(err error) bool {
 
 func TestRunHostport(t *testing.T) {
 	n := NewNaabuClient(
-		WithPorts("42800-43000"),
+		WithPorts("-"),
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
