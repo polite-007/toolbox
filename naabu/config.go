@@ -36,6 +36,9 @@ type Config struct {
 
 	// 输出行为
 	Silent bool
+
+	// OnHostDone 每个主机端口探测完成后的回调（用于进度统计）。
+	OnHostDone func(HostResult)
 }
 
 // Option 配置函数类型。
@@ -196,5 +199,12 @@ func WithSystemResolver() Option {
 func WithSilent(silent bool) Option {
 	return func(c *Config) {
 		c.Silent = silent
+	}
+}
+
+// WithHostDone 设置每个主机完成端口探测后的回调（用于进度统计）。
+func WithHostDone(fn func(HostResult)) Option {
+	return func(c *Config) {
+		c.OnHostDone = fn
 	}
 }

@@ -22,6 +22,9 @@ func (c *NaabuClient) Run(ctx context.Context, targets []string, onResult func(r
 		for _, r := range toResults(hostResult) {
 			onResult(r)
 		}
+		if c.config.OnHostDone != nil {
+			c.config.OnHostDone(toHostResult(hostResult))
+		}
 	})
 
 	// 复用上游参数校验，错误通过返回值暴露（原 CLI 使用 gologger.Fatal 退出进程）。
