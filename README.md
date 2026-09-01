@@ -19,6 +19,7 @@ go get github.com/polite-007/toolbox
 | **naabu** | `github.com/polite-007/toolbox/naabu` | 端口扫描封装（基于 projectdiscovery/naabu） |
 | **xlsx** | `github.com/polite-007/toolbox/xlsx` | Excel 读写工具，支持多 Sheet、JSON 导出 |
 | **dig** | `github.com/polite-007/toolbox/dig` | DNS 查询工具，支持多记录类型、自定义 DNS 服务器 |
+| **ipinfo** | `github.com/polite-007/toolbox/ipinfo` | IP 网络信息查询，多免费源归一 + 自动 failover |
 
 ## 使用示例
 
@@ -88,6 +89,37 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+```
+
+### ipinfo：IP 网络信息查询
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/polite-007/toolbox/ipinfo"
+)
+
+func main() {
+	client, err := ipinfo.NewIpinfoClient(
+		ipinfo.WithProxy("socks5://127.0.0.1:1080"), // 可选，http/https/socks5
+		ipinfo.WithTimeout(10 * time.Second),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	info, err := client.Lookup(context.Background(), "8.8.8.8")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s %s %s %s %s\n", info.IP, info.Country, info.CountryCode, info.Org, info.Source)
 }
 ```
 
