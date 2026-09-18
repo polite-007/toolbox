@@ -20,6 +20,7 @@ type Result struct {
 	Path          string    // 请求路径
 	Method        string    // 请求方法
 	StatusCode    int       // HTTP 状态码
+	Header        string    // 响应头
 	Title         string    // 页面标题
 	WebServer     string    // Server 头
 	ContentType   string    // Content-Type
@@ -69,6 +70,7 @@ func toResult(native runner.Result) Result {
 		ContentLength: native.ContentLength,
 		Location:      native.Location,
 		ResponseTime:  native.ResponseTime,
+		Header:        native.RawHeaders,
 		Technologies:  append([]string(nil), native.Technologies...),
 		CDN:           native.CDN,
 		CDNName:       native.CDNName,

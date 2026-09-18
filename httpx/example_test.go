@@ -51,12 +51,12 @@ func TestRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	err := client.Run(ctx, []string{"http://45.136.15.66:42847/"}, func(r httpx.Result) {
+	err := client.Run(ctx, []string{"http://fofa.info/"}, func(r httpx.Result) {
 		if r.Err != nil {
 			fmt.Println(r.Err)
 			return
 		}
-		fmt.Println(r.Title, r.StatusCode)
+		fmt.Println(r.Title, r.StatusCode, r.Header)
 	})
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
