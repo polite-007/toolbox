@@ -25,6 +25,40 @@ Requires Go 1.24 or later.
 
 ## Usage
 
+### FOFA search
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/polite-007/toolbox/fofa"
+)
+
+func main() {
+	client := fofa.NewClient("you@example.com", "YOUR_API_KEY")
+
+	resp, err := client.Search(&fofa.SearchRequest{
+		Ctx:    context.Background(),
+		Query:  `title="Directory listing for /"`,
+		Page:   1,
+		Size:   10,
+		Fields: "ip,port,title,link",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(resp.Fields)
+	for _, row := range resp.Results {
+		fmt.Println(row)
+	}
+}
+```
+
 ### HTTP probing
 
 ```go
