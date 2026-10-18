@@ -21,7 +21,8 @@ type Config struct {
 	SkipSuffixes []string // 文件名以任一项结尾则跳过（大小写敏感，自动补 "."）
 
 	// 回调
-	OnFile FileHandler
+	OnFile       FileHandler
+	OnTargetDone func(TargetResult) // 单个目标完成时回调；在 worker 中并发执行
 
 	// 网络配置
 	Proxy           string
@@ -130,6 +131,14 @@ func WithSkipSuffixes(suffixes []string) Option {
 func WithOnFile(handler FileHandler) Option {
 	return func(c *Config) {
 		c.OnFile = handler
+	}
+}
+
+// WithOnTargetDone 设置单个目标完成时的回调。
+// 该回调在 worker 中并发执行，必须保证 goroutine-safe。
+func WithOnTargetDone(fn func(TargetResult)) Option {
+	return func(c *Config) {
+		c.OnTargetDone = fn
 	}
 }
 

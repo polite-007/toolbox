@@ -46,13 +46,71 @@ type targetState struct {
 	err      error         // 受 crawler.mu 保护
 }
 
+// taskQueue 是无界任务队列，避免 worker 向有界 channel 投递子任务时互相阻塞。
+type taskQueue struct {
+	mu     sync.Mutex
+	cond   *sync.Cond
+	tasks  []crawlTask
+	head   int
+	closed bool
+}
+
+func newTaskQueue() *taskQueue {
+	q := &taskQueue{}
+	q.cond = sync.NewCond(&q.mu)
+	return q
+}
+
+// push 永不阻塞；队列关闭后返回 false。
+func (q *taskQueue) push(task crawlTask) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return false
+	}
+	q.tasks = append(q.tasks, task)
+	q.cond.Signal()
+	return true
+}
+
+func (q *taskQueue) pop(ctx context.Context) (crawlTask, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	for q.head == len(q.tasks) && !q.closed {
+		if ctx.Err() != nil {
+			return crawlTask{}, false
+		}
+		q.cond.Wait()
+	}
+	if q.head == len(q.tasks) {
+		return crawlTask{}, false
+	}
+
+	task := q.tasks[q.head]
+	q.tasks[q.head] = crawlTask{} // 释放引用
+	q.head++
+	if q.head == len(q.tasks) {
+		q.tasks = q.tasks[:0]
+		q.head = 0
+	}
+	return task, true
+}
+
+func (q *taskQueue) close() {
+	q.mu.Lock()
+	q.closed = true
+	q.cond.Broadcast()
+	q.mu.Unlock()
+}
+
 // crawler 持有单次运行（可含多个目标）的共享状态
 type crawler struct {
 	config  *Config
 	fetcher *fetcher
 	ctx     context.Context
 
-	tasks   chan crawlTask
+	queue   *taskQueue
 	pending atomic.Int64
 	doneCh  chan struct{}
 	done    sync.Once
@@ -120,7 +178,7 @@ func (c *OpenDirClient) RunTargets(ctx context.Context, targets []string) ([]Tar
 		config:  cfg,
 		fetcher: c.fetcher,
 		ctx:     ctx,
-		tasks:   make(chan crawlTask, cfg.Threads),
+		queue:   newTaskQueue(),
 		doneCh:  make(chan struct{}),
 	}
 
@@ -129,11 +187,15 @@ func (c *OpenDirClient) RunTargets(ctx context.Context, targets []string) ([]Tar
 	for _, raw := range targets {
 		root, err := normalizeTarget(raw)
 		if err != nil {
-			cr.targets = append(cr.targets, &targetState{
+			ts := &targetState{
 				stats: &Stats{Target: strings.TrimSpace(raw)},
 				start: now,
 				err:   err,
-			})
+			}
+			cr.targets = append(cr.targets, ts)
+			if cfg.OnTargetDone != nil {
+				cfg.OnTargetDone(TargetResult{Target: ts.stats.Target, Stats: ts.stats, Err: ts.err})
+			}
 			continue
 		}
 		key := root.String()
@@ -158,7 +220,7 @@ func (c *OpenDirClient) RunTargets(ctx context.Context, targets []string) ([]Tar
 		case <-cr.doneCh:
 		case <-ctx.Done():
 		}
-		close(cr.tasks)
+		cr.queue.close()
 	}()
 
 	// 调度期间保持 pending > 0，避免 worker 提前判定采集结束
@@ -220,39 +282,42 @@ func (c *crawler) enqueue(task crawlTask) bool {
 
 	owner.pending.Add(1)
 	c.pending.Add(1)
-	select {
-	case c.tasks <- task:
-		return true
-	case <-c.ctx.Done():
+	if !c.queue.push(task) {
 		owner.pending.Add(-1)
 		c.pending.Add(-1)
 		c.finishIfIdle()
 		return false
 	}
+	return true
 }
 
 func (c *crawler) worker() {
 	defer c.workers.Done()
 	for {
-		select {
-		case <-c.ctx.Done():
+		task, ok := c.queue.pop(c.ctx)
+		if !ok {
 			return
-		case task, ok := <-c.tasks:
-			if !ok {
-				return
-			}
-			c.process(task)
-
-			owner := task.owner
-			if owner.pending.Add(-1) == 0 {
-				c.mu.Lock()
-				owner.duration = time.Since(owner.start)
-				c.mu.Unlock()
-			}
-
-			c.pending.Add(-1)
-			c.finishIfIdle()
 		}
+		c.process(task)
+
+		owner := task.owner
+		if owner.pending.Add(-1) == 0 {
+			c.mu.Lock()
+			owner.duration = time.Since(owner.start)
+			result := TargetResult{
+				Target: owner.stats.Target,
+				Stats:  owner.stats,
+				Err:    owner.err,
+			}
+			c.mu.Unlock()
+
+			if c.config.OnTargetDone != nil {
+				c.config.OnTargetDone(result)
+			}
+		}
+
+		c.pending.Add(-1)
+		c.finishIfIdle()
 	}
 }
 

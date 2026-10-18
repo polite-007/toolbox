@@ -147,7 +147,7 @@ func main() {
 
 A runnable metadata-only example is available in [`opendir/examples`](opendir/examples/).
 
-To crawl multiple targets with one shared worker pool, use `RunTargets`. Results are returned in input order, and a failure on one target does not stop the others:
+To crawl multiple targets with one shared worker pool, use `RunTargets`. Results are returned in input order, and a failure on one target does not stop the others. Use `opendir.WithOnTargetDone` to receive each target's result as soon as it finishes (the callback runs concurrently):
 
 ```go
 package main

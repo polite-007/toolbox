@@ -147,7 +147,7 @@ func main() {
 
 可运行的示例见 [`opendir/examples`](opendir/examples/)，默认只采集元数据、不下载文件内容。
 
-需要采集多个目标时使用 `RunTargets`，所有目标共享同一个 worker 池。返回结果按输入顺序排列，单个目标失败不会影响其他目标：
+需要采集多个目标时使用 `RunTargets`，所有目标共享同一个 worker 池。返回结果按输入顺序排列，单个目标失败不会影响其他目标。使用 `opendir.WithOnTargetDone` 可以在每个目标完成时立即拿到结果（回调并发执行）：
 
 ```go
 package main

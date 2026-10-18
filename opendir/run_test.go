@@ -177,6 +177,74 @@ func TestRunTargets(t *testing.T) {
 	}
 }
 
+func TestRunTargetsOnTargetDone(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{
+		"/a.txt": "a",
+	})
+
+	var (
+		mu   sync.Mutex
+		seen = map[string]int{}
+	)
+	client := NewOpenDirClient(
+		WithOnFile(newCollector().handle),
+		WithOnTargetDone(func(result TargetResult) {
+			mu.Lock()
+			seen[result.Target]++
+			mu.Unlock()
+		}),
+	)
+
+	_, err := client.RunTargets(context.Background(), []string{
+		srv.URL,
+		srv.URL,
+		"ftp://example.com",
+	})
+	if err != nil {
+		t.Fatalf("RunTargets failed: %v", err)
+	}
+
+	if got := seen[srv.URL+"/"]; got != 1 {
+		t.Errorf("OnTargetDone for valid target called %d times, want 1", got)
+	}
+	if got := seen["ftp://example.com"]; got != 1 {
+		t.Errorf("OnTargetDone for invalid target called %d times, want 1", got)
+	}
+}
+
+func TestRunTargetsManyTasksNoDeadlock(t *testing.T) {
+	files := make(map[string]string, 300)
+	for i := 0; i < 300; i++ {
+		files[fmt.Sprintf("/file-%03d.txt", i)] = "x"
+	}
+	srv1 := newFixtureServer(t, files)
+	srv2 := newFixtureServer(t, files)
+
+	client := NewOpenDirClient(
+		WithThreads(2), // 两个 worker 同时作为生产者，最容易触发旧的环形等待
+		WithOnFile(newCollector().handle),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	results, err := client.RunTargets(ctx, []string{srv1.URL, srv2.URL})
+	if err != nil {
+		t.Fatalf("RunTargets failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
+	}
+	for _, result := range results {
+		if result.Err != nil {
+			t.Errorf("%s: %v", result.Target, result.Err)
+		}
+		if result.Stats.Files != 300 {
+			t.Errorf("%s: Files = %d, want 300", result.Target, result.Stats.Files)
+		}
+	}
+}
+
 func TestRunTargetsEmpty(t *testing.T) {
 	client := NewOpenDirClient(WithOnFile(newCollector().handle))
 	if _, err := client.RunTargets(context.Background(), nil); err == nil {
