@@ -5,14 +5,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/polite-007/toolbox/httpx"
 )
 
 // OpenDirClient 开放目录采集客户端
 type OpenDirClient struct {
 	config  *Config
-	fetcher *httpx.Fetcher
+	fetcher *fetcher
 }
 
 // NewOpenDirClient 创建一个新的 OpenDirClient
@@ -22,18 +20,18 @@ func NewOpenDirClient(opts ...Option) *OpenDirClient {
 		opt(cfg)
 	}
 
-	fetcher := httpx.NewFetcher(
-		httpx.WithFetchDialTimeout(time.Duration(cfg.DialTimeout)*time.Second),
-		httpx.WithFetchTimeout(time.Duration(cfg.Timeout)*time.Second),
-		httpx.WithFetchStallTimeout(time.Duration(cfg.StallTimeout)*time.Second),
-		// 大小限制由 opendir 按目录页/文件分别控制
-		httpx.WithFetchMaxBodySize(0),
-		httpx.WithFetchFollowRedirects(cfg.FollowRedirects),
-		httpx.WithFetchInsecureTLS(cfg.InsecureTLS),
-		httpx.WithFetchProxy(cfg.Proxy),
-		httpx.WithFetchHeaders(cfg.Headers),
-		httpx.WithFetchUserAgent(cfg.UserAgent),
-	)
+	fetcher := newFetcher(fetchConfig{
+		DialTimeout:     time.Duration(cfg.DialTimeout) * time.Second,
+		Timeout:         time.Duration(cfg.Timeout) * time.Second,
+		StallTimeout:    time.Duration(cfg.StallTimeout) * time.Second,
+		MaxBodySize:     0, // 大小限制由 opendir 按目录页/文件分别控制
+		FollowRedirects: cfg.FollowRedirects,
+		MaxRedirects:    defaultMaxRedirects,
+		InsecureTLS:     cfg.InsecureTLS,
+		Proxy:           cfg.Proxy,
+		Headers:         cfg.Headers,
+		UserAgent:       cfg.UserAgent,
+	})
 
 	return &OpenDirClient{config: cfg, fetcher: fetcher}
 }

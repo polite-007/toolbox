@@ -17,7 +17,7 @@ Requires Go 1.24 or later.
 | Package | Description |
 |---|---|
 | [`fofa`](fofa/) | FOFA API client for search, statistics, and asset lookup |
-| [`httpx`](httpx/) | HTTP probing based on `projectdiscovery/httpx`, plus a cancellable streaming `Fetcher` |
+| [`httpx`](httpx/) | HTTP probing based on `projectdiscovery/httpx` |
 | [`opendir`](opendir/) | Open directory (directory-listing) collector with depth, concurrency, and skip rules |
 | [`naabu`](naabu/) | Port scanning wrapper for `projectdiscovery/naabu` |
 | [`xlsx`](xlsx/) | Excel read/write with multiple sheets and JSON export |
@@ -44,28 +44,7 @@ err := client.Run(ctx, []string{"example.com:443"}, func(r httpx.Result) {
 })
 ```
 
-`Result.ResponseBody` contains only a 4 KiB preview. Use `Fetcher` when you need the full body.
-
-### Streaming requests
-
-```go
-fetcher := httpx.NewFetcher(
-	httpx.WithFetchTimeout(15*time.Second),      // time to first byte
-	httpx.WithFetchStallTimeout(30*time.Second), // max interval without body bytes
-	httpx.WithFetchMaxBodySize(50*1024*1024),
-)
-defer fetcher.Close()
-
-resp, err := fetcher.Get(ctx, "http://example.com/archive.zip")
-if err != nil {
-	return err
-}
-defer resp.Body.Close()
-
-_, err = io.Copy(dst, resp.Body)
-```
-
-The body is streamed and can be canceled through `ctx`. Slow downloads are allowed as long as bytes keep arriving.
+`Result.ResponseBody` contains only a 4 KiB preview. Use `opendir` when you need to stream complete file contents.
 
 ### Open directory collection
 
@@ -99,6 +78,8 @@ fmt.Printf("files=%d bytes=%d skipped=%d errors=%d\n",
 ```
 
 `depth` counts listing pages: `1` collects the root directory only. `Run` returns fatal errors only; per-URL failures are recorded in `Stats.Errors`.
+
+A runnable metadata-only example is available in [`opendir/examples`](opendir/examples/).
 
 ### Port scanning
 

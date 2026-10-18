@@ -30,6 +30,8 @@ type File struct {
 // r 仅在回调执行期间有效，且由框架限制在 MaxFileSize 以内；
 // 回调在多个 worker 中并发执行，必须保证 goroutine-safe。
 // 返回 error 时仅记录到 Stats.Errors，采集继续。
+//
+// 如果只需要文件元数据，可以不读取 r 直接返回 nil，此时不会下载响应体。
 type FileHandler func(ctx context.Context, f File, r io.Reader) error
 
 // SkipReason 表示文件被跳过的原因

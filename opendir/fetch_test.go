@@ -1,17 +1,14 @@
-package httpx_test
+package opendir
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/polite-007/toolbox/httpx"
 )
 
 func TestFetcherGet(t *testing.T) {
@@ -27,13 +24,13 @@ func TestFetcherGet(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher(
-		httpx.WithFetchUserAgent("test-agent"),
-		httpx.WithFetchHeaders([]string{"X-Test: 1"}),
-	)
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{
+		UserAgent: "test-agent",
+		Headers:   []string{"X-Test: 1"},
+	})
+	defer f.Close()
 
-	resp, err := fetcher.Get(context.Background(), srv.URL)
+	resp, err := f.Get(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
@@ -60,10 +57,10 @@ func TestFetcherAddsDefaultScheme(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher()
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{})
+	defer f.Close()
 
-	resp, err := fetcher.Get(context.Background(), srv.Listener.Addr().String())
+	resp, err := f.Get(context.Background(), srv.Listener.Addr().String())
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
@@ -79,18 +76,18 @@ func TestFetcherBodyTooLarge(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher(httpx.WithFetchMaxBodySize(10))
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{MaxBodySize: 10})
+	defer f.Close()
 
-	resp, err := fetcher.Get(context.Background(), srv.URL)
+	resp, err := f.Get(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	_, err = io.ReadAll(resp.Body)
-	if !errors.Is(err, httpx.ErrBodyTooLarge) {
-		t.Fatalf("ReadAll error = %v, want ErrBodyTooLarge", err)
+	if !errors.Is(err, errBodyTooLarge) {
+		t.Fatalf("ReadAll error = %v, want errBodyTooLarge", err)
 	}
 }
 
@@ -101,10 +98,10 @@ func TestFetcherTTFBTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher(httpx.WithFetchTimeout(50 * time.Millisecond))
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{Timeout: 50 * time.Millisecond})
+	defer f.Close()
 
-	if _, err := fetcher.Get(context.Background(), srv.URL); err == nil {
+	if _, err := f.Get(context.Background(), srv.URL); err == nil {
 		t.Fatal("Get succeeded, want timeout error")
 	}
 }
@@ -118,18 +115,18 @@ func TestFetcherStallTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher(httpx.WithFetchStallTimeout(100 * time.Millisecond))
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{StallTimeout: 100 * time.Millisecond})
+	defer f.Close()
 
-	resp, err := fetcher.Get(context.Background(), srv.URL)
+	resp, err := f.Get(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	_, err = io.ReadAll(resp.Body)
-	if !errors.Is(err, httpx.ErrStalled) {
-		t.Fatalf("ReadAll error = %v, want ErrStalled", err)
+	if !errors.Is(err, errStalled) {
+		t.Fatalf("ReadAll error = %v, want errStalled", err)
 	}
 }
 
@@ -143,10 +140,10 @@ func TestFetcherFollowsSameHostRedirect(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher()
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{FollowRedirects: true, MaxRedirects: defaultMaxRedirects})
+	defer f.Close()
 
-	resp, err := fetcher.Get(context.Background(), srv.URL)
+	resp, err := f.Get(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
@@ -167,10 +164,10 @@ func TestFetcherRejectsCrossHostRedirect(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher()
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{FollowRedirects: true, MaxRedirects: defaultMaxRedirects})
+	defer f.Close()
 
-	_, err := fetcher.Get(context.Background(), srv.URL)
+	_, err := f.Get(context.Background(), srv.URL)
 	if err == nil {
 		t.Fatal("Get succeeded, want cross-host redirect error")
 	}
@@ -185,10 +182,10 @@ func TestFetcherNoRedirects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := httpx.NewFetcher(httpx.WithFetchFollowRedirects(false))
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{FollowRedirects: false})
+	defer f.Close()
 
-	resp, err := fetcher.Get(context.Background(), srv.URL)
+	resp, err := f.Get(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
@@ -207,27 +204,14 @@ func TestFetcherContextCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	fetcher := httpx.NewFetcher(httpx.WithFetchTimeout(5 * time.Second))
-	defer fetcher.Close()
+	f := newFetcher(fetchConfig{Timeout: 5 * time.Second})
+	defer f.Close()
 
-	_, err := fetcher.Get(ctx, srv.URL)
+	_, err := f.Get(ctx, srv.URL)
 	if err == nil {
 		t.Fatal("Get succeeded, want context error")
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want DeadlineExceeded", err)
 	}
-}
-
-func ExampleNewFetcher() {
-	fetcher := httpx.NewFetcher(
-		httpx.WithFetchTimeout(10*time.Second),
-		httpx.WithFetchStallTimeout(30*time.Second),
-		httpx.WithFetchMaxBodySize(10*1024*1024),
-	)
-	defer fetcher.Close()
-
-	fmt.Println("fetcher created")
-	// Output:
-	// fetcher created
 }

@@ -322,6 +322,35 @@ func TestRunFileMetadata(t *testing.T) {
 	}
 }
 
+func TestRunMetadataOnlyHandler(t *testing.T) {
+	files := map[string]string{
+		"/big.bin": strings.Repeat("x", 256*1024),
+	}
+	srv := newFixtureServer(t, files)
+
+	var gotName string
+	client := NewOpenDirClient(
+		WithOnFile(func(_ context.Context, f File, _ io.Reader) error {
+			// 不读取 r，只采集元数据
+			gotName = f.Name
+			return nil
+		}),
+	)
+	stats, err := client.Run(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if gotName != "big.bin" {
+		t.Errorf("name = %q, want big.bin", gotName)
+	}
+	if stats.Files != 1 {
+		t.Errorf("Files = %d, want 1", stats.Files)
+	}
+	if stats.Bytes != 0 {
+		t.Errorf("Bytes = %d, want 0 (body should not be downloaded)", stats.Bytes)
+	}
+}
+
 func TestRunTooLargeSkipped(t *testing.T) {
 	files := map[string]string{
 		"/big.bin": "0123456789",

@@ -10,8 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/polite-007/toolbox/httpx"
 )
 
 // drainLimit 是回调提前返回时最多排空的字节数。
@@ -38,7 +36,7 @@ type crawlTask struct {
 // crawler 持有单次采集的运行时状态
 type crawler struct {
 	config  *Config
-	fetcher *httpx.Fetcher
+	fetcher *fetcher
 	ctx     context.Context
 
 	tasks   chan crawlTask
@@ -358,14 +356,17 @@ func (c *crawler) processFile(task crawlTask) {
 	counter := &countingReader{r: body}
 	handlerErr := c.config.OnFile(c.ctx, file, counter)
 
-	// 回调提前返回时排空少量剩余字节以复用连接
-	_, _ = io.CopyN(io.Discard, counter, drainLimit)
+	// 回调读过内容时，排空少量剩余字节以复用连接；
+	// 回调完全没读（只取元数据）时直接关闭，避免无谓下载。
+	if counter.n > 0 {
+		_, _ = io.CopyN(io.Discard, counter, drainLimit)
+	}
 
 	c.mu.Lock()
 	c.stats.Bytes += counter.n
 	c.mu.Unlock()
 
-	if errors.Is(handlerErr, httpx.ErrBodyTooLarge) {
+	if errors.Is(handlerErr, errBodyTooLarge) {
 		c.recordSkipped(SkippedFile{
 			URL:    task.url.String(),
 			Name:   task.name,
@@ -420,7 +421,7 @@ func (r *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// limitReader 在读取超过上限时返回 httpx.ErrBodyTooLarge
+// limitReader 在读取超过上限时返回 errBodyTooLarge
 type limitReader struct {
 	r   io.Reader
 	n   int64
@@ -434,7 +435,7 @@ func newLimitReader(r io.Reader, max int64) *limitReader {
 func (l *limitReader) Read(p []byte) (int, error) {
 	remaining := l.max + 1 - l.n
 	if remaining <= 0 {
-		return 0, httpx.ErrBodyTooLarge
+		return 0, errBodyTooLarge
 	}
 	if int64(len(p)) > remaining {
 		p = p[:remaining]
@@ -443,7 +444,7 @@ func (l *limitReader) Read(p []byte) (int, error) {
 	n, err := l.r.Read(p)
 	l.n += int64(n)
 	if l.n > l.max {
-		return 0, httpx.ErrBodyTooLarge
+		return 0, errBodyTooLarge
 	}
 	return n, err
 }

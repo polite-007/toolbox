@@ -16,13 +16,17 @@ func ExampleNewOpenDirClient() {
 		opendir.WithMaxFileSize(50*1024*1024),
 		opendir.WithSkipSuffixes([]string{".jpg", ".png"}),
 		opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
+			fmt.Printf("file: %s, size: %d, type: %s\n", f.URL, f.Size, f.ContentType)
+
 			// r 只在回调执行期间有效，需自行保证并发安全
-			_, err := io.Copy(io.Discard, r)
-			return err
+			// _, err := io.Copy(io.Discard, r)
+			return nil
 		}),
 	)
 	_ = client
 
+	// 实际使用时：
+	// stats, err := client.Run(context.Background(), "http://example.com/files/")
 	fmt.Println("opendir client created")
 	// Output:
 	// opendir client created
