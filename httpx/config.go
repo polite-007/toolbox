@@ -1,4 +1,4 @@
-﻿package httpx
+package httpx
 
 // Config 封装 httpx 探测的所有可配置项，与上游 runner.Options 解耦
 type Config struct {
@@ -12,10 +12,10 @@ type Config struct {
 	FollowRedirects bool
 
 	// 探测配置
-	Threads   int
-	RateLimit int
-	Retries   int
-	Ports     []string
+	Threads    int
+	RateLimit  int
+	Retries    int
+	Ports      []string
 	TechDetect bool
 	Favicon    bool
 

@@ -1,128 +1,157 @@
 # Toolbox
 
-Go 工具库集合，提供常用安全与数据处理能力，可直接 `go get` 导入使用。
+Toolbox is a collection of Go packages that wrap common network-security and data-processing tools behind small, consistent APIs. Each package is independent, so you can import only what you need.
 
-旨在将很多复杂，好用的网络安全工具，pkg化
+English | [中文](#中文说明)
 
-## 安装
+## Installation
 
 ```bash
 go get github.com/polite-007/toolbox
 ```
 
-## 包列表
+Requires Go 1.24 or later.
 
-| 包 | 导入路径 | 说明 |
-|---|---|---|
-| **fofa** | `github.com/polite-007/toolbox/fofa` | FOFA API 客户端，支持搜索、统计、资产查询 |
-| **httpx** | `github.com/polite-007/toolbox/httpx` | HTTP 探测封装（基于 projectdiscovery/httpx） |
-| **naabu** | `github.com/polite-007/toolbox/naabu` | 端口扫描封装（基于 projectdiscovery/naabu） |
-| **xlsx** | `github.com/polite-007/toolbox/xlsx` | Excel 读写工具，支持多 Sheet、JSON 导出 |
-| **dig** | `github.com/polite-007/toolbox/dig` | DNS 查询工具，支持多记录类型、自定义 DNS 服务器 |
-| **ipinfo** | `github.com/polite-007/toolbox/ipinfo` | IP 网络信息查询，多免费源归一 + 自动 failover |
+## Packages
 
-## 使用示例
+| Package | Description |
+|---|---|
+| [`fofa`](fofa/) | FOFA API client for search, statistics, and asset lookup |
+| [`httpx`](httpx/) | HTTP probing based on `projectdiscovery/httpx`, plus a cancellable streaming `Fetcher` |
+| [`opendir`](opendir/) | Open directory (directory-listing) collector with depth, concurrency, and skip rules |
+| [`naabu`](naabu/) | Port scanning wrapper for `projectdiscovery/naabu` |
+| [`xlsx`](xlsx/) | Excel read/write with multiple sheets and JSON export |
+| [`dig`](dig/) | DNS queries with multiple record types and custom resolvers |
+| [`ipinfo`](ipinfo/) | IP network information from multiple free sources with automatic failover |
 
-### naabu：端口扫描
+## Usage
+
+### HTTP probing
+
+`Run` sends requests and reports each result through a callback.
 
 ```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-
-	"github.com/polite-007/toolbox/naabu"
+client := httpx.NewHttpxClient(
+	httpx.WithThreads(50),
+	httpx.WithTechDetect(),
 )
 
-func main() {
-	client := naabu.NewNaabuClient(
-		naabu.WithRate(100),
-	)
-
-	// 方式一：统一扫描一批目标的一组端口
-	err := client.Run(context.Background(), []string{"example.com"}, func(r naabu.Result) {
-		fmt.Printf("%s:%d/%s open\n", r.Host, r.Port, r.Protocol)
-	})
-
-	// 方式二：输入 ip:port 列表，按 host 聚合精确扫描，结果保持输入顺序
-	err = client.RunHostPorts(context.Background(), []string{
-		"1.1.1.1:80",
-		"1.1.1.1:443",
-		"u:8.8.8.8:53",
-	}, func(r naabu.Result) {
-		fmt.Printf("%s:%d/%s open\n", r.Host, r.Port, r.Protocol)
-	})
-	if err != nil {
-		log.Fatal(err)
+err := client.Run(ctx, []string{"example.com:443"}, func(r httpx.Result) {
+	if r.Err != nil {
+		return
 	}
-}
+	fmt.Printf("%d %s %s\n", r.StatusCode, r.Title, r.URL)
+})
 ```
 
-### httpx：HTTP 探测
+`Result.ResponseBody` contains only a 4 KiB preview. Use `Fetcher` when you need the full body.
+
+### Streaming requests
 
 ```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-
-	"github.com/polite-007/toolbox/httpx"
+fetcher := httpx.NewFetcher(
+	httpx.WithFetchTimeout(15*time.Second),      // time to first byte
+	httpx.WithFetchStallTimeout(30*time.Second), // max interval without body bytes
+	httpx.WithFetchMaxBodySize(50*1024*1024),
 )
+defer fetcher.Close()
 
-func main() {
-	client := httpx.NewHttpxClient(
-		httpx.WithTechDetect(),
-		httpx.WithFollowRedirects(),
-	)
+resp, err := fetcher.Get(ctx, "http://example.com/archive.zip")
+if err != nil {
+	return err
+}
+defer resp.Body.Close()
 
-	err := client.Run(context.Background(), []string{"example.com:443"}, func(r httpx.Result) {
-		if r.Err != nil {
-			fmt.Println(r.Err)
-			return
+_, err = io.Copy(dst, resp.Body)
+```
+
+The body is streamed and can be canceled through `ctx`. Slow downloads are allowed as long as bytes keep arriving.
+
+### Open directory collection
+
+```go
+client := opendir.NewOpenDirClient(
+	opendir.WithDepth(2),
+	opendir.WithThreads(50),
+	opendir.WithMaxURLs(1000),
+	opendir.WithMaxFileSize(50*1024*1024),
+	opendir.WithSkipNames([]string{"private"}),          // case-sensitive substring
+	opendir.WithSkipSuffixes([]string{".jpg", ".png"}),  // case-sensitive suffix
+	opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
+		// The callback runs concurrently; keep it goroutine-safe.
+		// r is valid only for the duration of the call.
+		out, err := os.Create(filepath.Join(dest, filepath.Base(f.Name)))
+		if err != nil {
+			return err
 		}
-		fmt.Printf("%d %s %s %v\n", r.StatusCode, r.Title, r.URL, r.Technologies)
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-```
-
-### ipinfo：IP 网络信息查询
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"time"
-
-	"github.com/polite-007/toolbox/ipinfo"
+		defer out.Close()
+		_, err = io.Copy(out, r)
+		return err
+	}),
 )
 
-func main() {
-	client, err := ipinfo.NewIpinfoClient(
-		ipinfo.WithProxy("socks5://127.0.0.1:1080"), // 可选，http/https/socks5
-		ipinfo.WithTimeout(10 * time.Second),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	info, err := client.Lookup(context.Background(), "8.8.8.8")
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("%s %s %s %s %s\n", info.IP, info.Country, info.CountryCode, info.Org, info.Source)
+stats, err := client.Run(ctx, "http://example.com/files/")
+if err != nil {
+	return err
 }
+fmt.Printf("files=%d bytes=%d skipped=%d errors=%d\n",
+	stats.Files, stats.Bytes, len(stats.Skipped), len(stats.Errors))
+```
+
+`depth` counts listing pages: `1` collects the root directory only. `Run` returns fatal errors only; per-URL failures are recorded in `Stats.Errors`.
+
+### Port scanning
+
+```go
+client := naabu.NewNaabuClient(naabu.WithRate(100))
+
+err := client.Run(ctx, []string{"example.com"}, func(r naabu.Result) {
+	fmt.Printf("%s:%d/%s open\n", r.Host, r.Port, r.Protocol)
+})
+```
+
+### IP information
+
+```go
+client, err := ipinfo.NewIpinfoClient(
+	ipinfo.WithProxy("socks5://127.0.0.1:1080"), // optional
+	ipinfo.WithTimeout(10*time.Second),
+)
+if err != nil {
+	return err
+}
+
+info, err := client.Lookup(ctx, "8.8.8.8")
+if err != nil {
+	return err
+}
+fmt.Printf("%s %s %s\n", info.IP, info.Country, info.Org)
 ```
 
 ## License
 
-[LICENSE](./LICENSE)
+[MIT](LICENSE)
+
+---
+
+## 中文说明
+
+Toolbox 是一组 Go 工具库，把常用的网络安全与数据处理工具封装成小而一致的 API。各包相互独立，按需引入即可。
+
+```bash
+go get github.com/polite-007/toolbox
+```
+
+需要 Go 1.24 或更高版本。
+
+| 包 | 说明 |
+|---|---|
+| [`fofa`](fofa/) | FOFA API 客户端，支持搜索、统计、资产查询 |
+| [`httpx`](httpx/) | 基于 `projectdiscovery/httpx` 的 HTTP 探测，以及可取消的流式 `Fetcher` |
+| [`opendir`](opendir/) | 开放目录采集，支持深度、并发、限额与跳过规则 |
+| [`naabu`](naabu/) | 基于 `projectdiscovery/naabu` 的端口扫描封装 |
+| [`xlsx`](xlsx/) | Excel 读写，支持多 Sheet 与 JSON 导出 |
+| [`dig`](dig/) | DNS 查询，支持多记录类型与自定义 DNS 服务器 |
+| [`ipinfo`](ipinfo/) | 多免费源 IP 信息查询，自动 failover |
+
+使用示例见上方英文部分，代码可直接复用。

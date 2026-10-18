@@ -3,6 +3,7 @@ module github.com/polite-007/toolbox
 go 1.24.11
 
 require (
+	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/miekg/dns v1.1.68
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/httpx v1.7.4
@@ -10,7 +11,6 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/xuri/excelize/v2 v2.10.0
 	golang.org/x/net v0.50.0
-	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -22,7 +22,6 @@ require (
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057 // indirect
 	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect
 	github.com/Mzack9999/gopacket v0.0.0-20260327212258-d211b432c22b // indirect
-	github.com/PuerkitoBio/goquery v1.11.0 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
 	github.com/Ullaakut/nmap/v3 v3.0.6 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
@@ -180,4 +179,5 @@ require (
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.41.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
