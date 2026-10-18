@@ -30,11 +30,22 @@ func main() {
 		opendir.WithFollowRedirects(true),
 		// opendir.WithProxy("socks5://127.0.0.1:7895"), // 按需启用
 		opendir.WithSkipSuffixes([]string{".jpg", ".pdf"}),
+		
 		opendir.WithOnFile(func(_ context.Context, f opendir.File, _ io.Reader) error {
 			// 不读取 r，只输出元数据，不会下载文件内容
 			fmt.Printf("%10d  %-30s  %s\n", f.Size, f.ContentType, f.URL)
 			return nil
 		}),
+
+		// opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
+		// 	out, err := os.Create(filepath.Join(dest, filepath.Base(f.Name)))
+		// 	if err != nil {
+		// 		return err
+		// 	}
+		// 	defer out.Close()
+		// 	_, err = io.Copy(out, r) // 边下载边写盘
+		// 	return err
+		// })
 	)
 
 	stats, err := client.Run(context.Background(), target)
@@ -46,3 +57,4 @@ func main() {
 		stats.Files, stats.DirsVisited, stats.Bytes,
 		len(stats.Skipped), len(stats.Errors), stats.Truncated, stats.Duration)
 }
+
