@@ -147,6 +147,47 @@ func main() {
 
 A runnable metadata-only example is available in [`opendir/examples`](opendir/examples/).
 
+To crawl multiple targets with one shared worker pool, use `RunTargets`. Results are returned in input order, and a failure on one target does not stop the others:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log"
+
+	"github.com/polite-007/toolbox/opendir"
+)
+
+func main() {
+	client := opendir.NewOpenDirClient(
+		opendir.WithDepth(2),
+		opendir.WithThreads(50),
+		opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
+			return nil // metadata only
+		}),
+	)
+
+	results, err := client.RunTargets(context.Background(), []string{
+		"http://host-a/files/",
+		"http://host-b/files/",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, result := range results {
+		if result.Err != nil {
+			log.Printf("%s: %v", result.Target, result.Err)
+			continue
+		}
+		fmt.Printf("%s: files=%d\n", result.Target, result.Stats.Files)
+	}
+}
+```
+
 ### Port scanning
 
 ```go

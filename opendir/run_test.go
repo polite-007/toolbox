@@ -124,6 +124,66 @@ func (c *collector) byName(name string) (collectedFile, bool) {
 	return collectedFile{}, false
 }
 
+func TestRunTargets(t *testing.T) {
+	srv1 := newFixtureServer(t, map[string]string{
+		"/a1.txt": "a1",
+		"/a2.txt": "a2",
+	})
+	srv2 := newFixtureServer(t, map[string]string{
+		"/b1.txt": "b1",
+	})
+
+	col := newCollector()
+	client := NewOpenDirClient(WithThreads(4), WithOnFile(col.handle))
+
+	results, err := client.RunTargets(context.Background(), []string{
+		srv1.URL,
+		srv1.URL, // duplicate, should be deduplicated
+		"ftp://example.com",
+		srv2.URL,
+	})
+	if err != nil {
+		t.Fatalf("RunTargets failed: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("results = %d, want 3 (duplicate target removed)", len(results))
+	}
+
+	wantTarget := srv1.URL + "/"
+	if results[0].Target != wantTarget {
+		t.Errorf("results[0].Target = %q, want %q", results[0].Target, wantTarget)
+	}
+	if results[0].Err != nil {
+		t.Errorf("results[0].Err = %v, want nil", results[0].Err)
+	}
+	if results[0].Stats.Files != 2 {
+		t.Errorf("results[0].Files = %d, want 2", results[0].Stats.Files)
+	}
+
+	if !errors.Is(results[1].Err, ErrInvalidTarget) {
+		t.Errorf("results[1].Err = %v, want ErrInvalidTarget", results[1].Err)
+	}
+
+	if results[2].Err != nil {
+		t.Errorf("results[2].Err = %v, want nil", results[2].Err)
+	}
+	if results[2].Stats.Files != 1 {
+		t.Errorf("results[2].Files = %d, want 1", results[2].Stats.Files)
+	}
+
+	names := col.names()
+	if len(names) != 3 || names[0] != "a1.txt" || names[1] != "a2.txt" || names[2] != "b1.txt" {
+		t.Errorf("collected files = %v, want [a1.txt a2.txt b1.txt]", names)
+	}
+}
+
+func TestRunTargetsEmpty(t *testing.T) {
+	client := NewOpenDirClient(WithOnFile(newCollector().handle))
+	if _, err := client.RunTargets(context.Background(), nil); err == nil {
+		t.Fatal("RunTargets succeeded, want error")
+	}
+}
+
 func TestRunDepth(t *testing.T) {
 	files := map[string]string{
 		"/root.txt":        "root",

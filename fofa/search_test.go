@@ -15,6 +15,29 @@ import (
 	"github.com/pkg/errors"
 )
 
+func TestSearchResponse_GetResults(t *testing.T) {
+	t.Parallel()
+
+	resp := &SearchResponse{
+		Fields:  []string{"host", "ip", "title"},
+		Results: [][]string{{"https://example.com", "1.2.3.4", "Example"}},
+	}
+
+	results := resp.GetResults()
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Host != "https://example.com" {
+		t.Errorf("Host = %q, want https://example.com", results[0].Host)
+	}
+	if results[0].IP != "1.2.3.4" {
+		t.Errorf("IP = %q, want 1.2.3.4", results[0].IP)
+	}
+	if results[0].Title != "Example" {
+		t.Errorf("Title = %q, want Example", results[0].Title)
+	}
+}
+
 func TestClient_SearchAll_MultiPageAndRequestImmutability(t *testing.T) {
 	t.Parallel()
 

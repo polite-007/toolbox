@@ -147,6 +147,47 @@ func main() {
 
 可运行的示例见 [`opendir/examples`](opendir/examples/)，默认只采集元数据、不下载文件内容。
 
+需要采集多个目标时使用 `RunTargets`，所有目标共享同一个 worker 池。返回结果按输入顺序排列，单个目标失败不会影响其他目标：
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log"
+
+	"github.com/polite-007/toolbox/opendir"
+)
+
+func main() {
+	client := opendir.NewOpenDirClient(
+		opendir.WithDepth(2),
+		opendir.WithThreads(50),
+		opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
+			return nil // 只取元数据
+		}),
+	)
+
+	results, err := client.RunTargets(context.Background(), []string{
+		"http://host-a/files/",
+		"http://host-b/files/",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, result := range results {
+		if result.Err != nil {
+			log.Printf("%s: %v", result.Target, result.Err)
+			continue
+		}
+		fmt.Printf("%s: files=%d\n", result.Target, result.Stats.Files)
+	}
+}
+```
+
 ### 端口扫描
 
 ```go

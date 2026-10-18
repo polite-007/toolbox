@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"time"
 )
 
@@ -23,6 +24,15 @@ type File struct {
 	Name        string // 解码后的文件名
 	Size        int64  // 响应 Content-Length，未知为 -1
 	ContentType string // 响应 Content-Type
+}
+
+// GetHost 返回文件所在的主机名含端口，例如 "example.com" 或 "example.com:8080"。
+func (f File) GetHost() string {
+	u, err := url.Parse(f.URL)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 // FileHandler 处理单个文件的内容。
@@ -74,4 +84,11 @@ type Stats struct {
 	ErrorsOmitted  int           // 超出保留上限的错误数
 	Duration       time.Duration
 	Truncated      bool // 是否触及 MaxURLs 上限
+}
+
+// TargetResult 是单个目标的采集结果
+type TargetResult struct {
+	Target string // 归一化后的目标；非法目标保留原始输入
+	Stats  *Stats // 采集统计
+	Err    error  // 目标级致命错误
 }

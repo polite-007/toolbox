@@ -6,7 +6,7 @@ import "time"
 type Config struct {
 	// 采集配置
 	Depth       int   // 采集深度，1 表示只采集根目录
-	Threads     int   // 并发 worker 数
+	Threads     int   // 共享 worker 数，RunTargets 中所有目标共用
 	MaxURLs     int   // 单个目标最多发出的请求数
 	MaxFileSize int64 // 单个文件大小上限（字节），<=0 表示不限制
 
@@ -14,7 +14,7 @@ type Config struct {
 	Timeout      int           // TTFB 超时（秒）
 	DialTimeout  int           // TCP 建连超时（秒）
 	StallTimeout int           // body 停滞超时（秒），<=0 表示不检测
-	MaxDuration  time.Duration // 单目标总预算，0 表示不限制
+	MaxDuration  time.Duration // 整次运行的总预算（多目标时为整批），0 表示不限制
 
 	// 跳过规则
 	SkipNames    []string // 文件名包含任一项则跳过（大小写敏感）
