@@ -2,7 +2,7 @@
 
 Toolbox is a collection of Go packages that wrap common network-security and data-processing tools behind small, consistent APIs. Each package is independent, so you can import only what you need.
 
-English | [中文](#中文说明)
+English | [中文](README.zh-CN.md)
 
 ## Installation
 
@@ -131,27 +131,3 @@ fmt.Printf("%s %s %s\n", info.IP, info.Country, info.Org)
 ## License
 
 [MIT](LICENSE)
-
----
-
-## 中文说明
-
-Toolbox 是一组 Go 工具库，把常用的网络安全与数据处理工具封装成小而一致的 API。各包相互独立，按需引入即可。
-
-```bash
-go get github.com/polite-007/toolbox
-```
-
-需要 Go 1.24 或更高版本。
-
-| 包 | 说明 |
-|---|---|
-| [`fofa`](fofa/) | FOFA API 客户端，支持搜索、统计、资产查询 |
-| [`httpx`](httpx/) | 基于 `projectdiscovery/httpx` 的 HTTP 探测，以及可取消的流式 `Fetcher` |
-| [`opendir`](opendir/) | 开放目录采集，支持深度、并发、限额与跳过规则 |
-| [`naabu`](naabu/) | 基于 `projectdiscovery/naabu` 的端口扫描封装 |
-| [`xlsx`](xlsx/) | Excel 读写，支持多 Sheet 与 JSON 导出 |
-| [`dig`](dig/) | DNS 查询，支持多记录类型与自定义 DNS 服务器 |
-| [`ipinfo`](ipinfo/) | 多免费源 IP 信息查询，自动 failover |
-
-使用示例见上方英文部分，代码可直接复用。
