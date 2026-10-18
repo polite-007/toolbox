@@ -4,7 +4,6 @@ go 1.24.11
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/miekg/dns v1.1.68
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/httpx v1.7.4
 	github.com/projectdiscovery/naabu/v2 v2.6.0
@@ -85,6 +84,7 @@ require (
 	github.com/mfonda/simhash v0.0.0-20151007195837-79f94a1100d6 // indirect
 	github.com/mholt/archives v0.1.5 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
+	github.com/miekg/dns v1.1.68 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect
 	github.com/minio/selfupdate v0.6.1-0.20230907112617-f11e74f84ca7 // indirect

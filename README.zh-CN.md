@@ -21,7 +21,6 @@ go get github.com/polite-007/toolbox
 | [`opendir`](opendir/) | 开放目录采集，支持深度、并发、限额与跳过规则 |
 | [`naabu`](naabu/) | 基于 `projectdiscovery/naabu` 的端口扫描封装 |
 | [`xlsx`](xlsx/) | Excel 读写，支持多 Sheet 与 JSON 导出 |
-| [`dig`](dig/) | DNS 查询，支持多记录类型与自定义 DNS 服务器 |
 | [`ipinfo`](ipinfo/) | 多免费源 IP 信息查询，自动 failover |
 
 ## 使用示例

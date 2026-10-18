@@ -21,7 +21,6 @@ Requires Go 1.24 or later.
 | [`opendir`](opendir/) | Open directory (directory-listing) collector with depth, concurrency, and skip rules |
 | [`naabu`](naabu/) | Port scanning wrapper for `projectdiscovery/naabu` |
 | [`xlsx`](xlsx/) | Excel read/write with multiple sheets and JSON export |
-| [`dig`](dig/) | DNS queries with multiple record types and custom resolvers |
 | [`ipinfo`](ipinfo/) | IP network information from multiple free sources with automatic failover |
 
 ## Usage
