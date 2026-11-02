@@ -51,7 +51,7 @@ func main() {
 		// opendir.WithProxy("socks5://127.0.0.1:7895"), // 按需启用
 		// opendir.WithSkipSuffixes([]string{".jpg", ".pdf"}),
 		// opendir.WithSkipNames([]string{"简历", "secret"}),
-		opendir.WithSkipDirNames([]string{".git", "node_modules", "vendor", ".venv"}),
+		opendir.WithSkipDirNames([]string{"pylib",".pnpm",".npm","go",".git", "node_modules", "vendor", ".venv"}),
 
 		// 只采集元数据、不下载内容时使用：
 		// opendir.WithOnFile(func(_ context.Context, f opendir.File, _ io.Reader) error {
