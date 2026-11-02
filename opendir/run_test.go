@@ -342,6 +342,70 @@ func TestRunSkipRules(t *testing.T) {
 	}
 }
 
+func TestRunSkipDirNames(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{
+		"/keep/a.txt":             "a",
+		"/node_modules/b.txt":     "b",
+		"/sub/node_modules/c.txt": "c",
+		"/sub/d.txt":              "d",
+	})
+
+	col := newCollector()
+	client := NewOpenDirClient(
+		WithDepth(3),
+		WithSkipDirNames([]string{"node_modules"}),
+		WithOnFile(col.handle),
+	)
+	stats, err := client.Run(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	want := []string{"a.txt", "d.txt"}
+	if got := col.names(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("files = %v, want %v", got, want)
+	}
+	// 根页面 + /keep/ + /sub/ + a.txt + d.txt；被跳过的目录不会发出请求
+	if stats.Requests != 5 {
+		t.Errorf("Requests = %d, want 5", stats.Requests)
+	}
+	if len(stats.Skipped) != 2 {
+		t.Fatalf("Skipped = %d, want 2", len(stats.Skipped))
+	}
+	for _, s := range stats.Skipped {
+		if s.Reason != SkipDirName {
+			t.Errorf("%s reason = %q, want %q", s.Name, s.Reason, SkipDirName)
+		}
+	}
+}
+
+func TestSkipRulesDoNotCrossKinds(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{
+		"/secret/a.txt":     "a", // 目录名命中 SkipNames，但目录仍应被采集
+		"/node_modules.txt": "b", // 文件名命中 SkipDirNames，但文件仍应被采集
+	})
+
+	col := newCollector()
+	client := NewOpenDirClient(
+		WithDepth(2),
+		WithSkipNames([]string{"secret"}),
+		WithSkipDirNames([]string{"node_modules"}),
+		WithOnFile(col.handle),
+	)
+	stats, err := client.Run(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	want := []string{"a.txt", "node_modules.txt"}
+	if got := col.names(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("files = %v, want %v", got, want)
+	}
+	if len(stats.Skipped) != 0 {
+		t.Errorf("Skipped = %+v, want none", stats.Skipped)
+	}
+}
+
 func TestRunMaxURLs(t *testing.T) {
 	files := map[string]string{
 		"/a.txt":      "a",

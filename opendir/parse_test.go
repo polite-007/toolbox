@@ -126,6 +126,30 @@ func TestFileDir(t *testing.T) {
 	}
 }
 
+func TestSkipDirReason(t *testing.T) {
+	c := &crawler{config: &Config{
+		SkipDirNames: []string{"node_modules", "备份"},
+	}}
+
+	tests := []struct {
+		name   string
+		reason SkipReason
+		skip   bool
+	}{
+		{"node_modules", SkipDirName, true},
+		{"app_node_modules", SkipDirName, true},
+		{"2024 备份", SkipDirName, true},
+		{"Node_Modules", "", false},
+		{"src", "", false},
+	}
+	for _, tt := range tests {
+		reason, skip := c.skipDirReason(tt.name)
+		if skip != tt.skip || reason != tt.reason {
+			t.Errorf("skipDirReason(%q) = (%q, %v), want (%q, %v)", tt.name, reason, skip, tt.reason, tt.skip)
+		}
+	}
+}
+
 func TestSkipReason(t *testing.T) {
 	c := &crawler{config: &Config{
 		SkipNames:    []string{"简历", "secret"},

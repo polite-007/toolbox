@@ -52,13 +52,15 @@ const (
 	SkipName SkipReason = "skip_name"
 	// SkipSuffix 命中 SkipSuffixes（大小写敏感的后缀）
 	SkipSuffix SkipReason = "skip_suffix"
+	// SkipDirName 命中的目录名包含 SkipDirNames 中的任一项，该目录未被采集
+	SkipDirName SkipReason = "skip_dir_name"
 	// SkipStatus 文件请求返回非 2xx
 	SkipStatus SkipReason = "status"
 	// SkipTooLarge 文件超过 MaxFileSize
 	SkipTooLarge SkipReason = "too_large"
 )
 
-// SkippedFile 描述一个被跳过的文件
+// SkippedFile 描述一个被跳过的文件或目录（目录仅因 SkipDirNames 被跳过）
 type SkippedFile struct {
 	URL    string
 	Name   string
@@ -79,7 +81,7 @@ type Stats struct {
 	Bytes          int64         // 读取的文件字节数
 	DirsVisited    int           // 访问过的目录页数
 	DirsDiscovered int           // 发现并调度的子目录数
-	Skipped        []SkippedFile // 被跳过的文件
+	Skipped        []SkippedFile // 被跳过的文件；命中 SkipDirNames 的目录也记录在此
 	Errors         []FileError   // 单 URL 错误（最多保留 MaxErrors 条）
 	ErrorsOmitted  int           // 超出保留上限的错误数
 	Duration       time.Duration

@@ -19,6 +19,7 @@ type Config struct {
 	// 跳过规则
 	SkipNames    []string // 文件名包含任一项则跳过（大小写敏感）
 	SkipSuffixes []string // 文件名以任一项结尾则跳过（大小写敏感，自动补 "."）
+	SkipDirNames []string // 目录名包含任一项则跳过（大小写敏感），该目录及其内容不会被采集
 
 	// 回调
 	OnFile       FileHandler
@@ -124,6 +125,14 @@ func WithSkipNames(names []string) Option {
 func WithSkipSuffixes(suffixes []string) Option {
 	return func(c *Config) {
 		c.SkipSuffixes = append(c.SkipSuffixes, suffixes...)
+	}
+}
+
+// WithSkipDirNames 设置目录名跳过关键词（大小写敏感的子串匹配）。
+// 命中的目录不会被加入采集队列，其下所有文件和子目录都不会被访问。
+func WithSkipDirNames(names []string) Option {
+	return func(c *Config) {
+		c.SkipDirNames = append(c.SkipDirNames, names...)
 	}
 }
 

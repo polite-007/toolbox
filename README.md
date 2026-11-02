@@ -119,8 +119,9 @@ func main() {
 		opendir.WithThreads(50),
 		opendir.WithMaxURLs(1000),
 		opendir.WithMaxFileSize(50*1024*1024),
-		opendir.WithSkipNames([]string{"private"}),         // case-sensitive substring
-		opendir.WithSkipSuffixes([]string{".jpg", ".png"}), // case-sensitive suffix
+		opendir.WithSkipNames([]string{"private"}),         // case-sensitive file-name substring
+		opendir.WithSkipSuffixes([]string{".jpg", ".png"}), // case-sensitive file-name suffix
+		opendir.WithSkipDirNames([]string{"node_modules"}), // case-sensitive dir-name substring; matching dirs are not crawled
 		opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
 			// The callback runs concurrently; keep it goroutine-safe.
 			// r is valid only for the duration of the call.

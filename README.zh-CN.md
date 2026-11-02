@@ -119,8 +119,9 @@ func main() {
 		opendir.WithThreads(50),
 		opendir.WithMaxURLs(1000),
 		opendir.WithMaxFileSize(50*1024*1024),
-		opendir.WithSkipNames([]string{"private"}),         // 大小写敏感的子串
-		opendir.WithSkipSuffixes([]string{".jpg", ".png"}), // 大小写敏感的后缀
+		opendir.WithSkipNames([]string{"private"}),         // 大小写敏感的文件名子串
+		opendir.WithSkipSuffixes([]string{".jpg", ".png"}), // 大小写敏感的文件名后缀
+		opendir.WithSkipDirNames([]string{"node_modules"}), // 大小写敏感的目录名子串，命中目录不采集
 		opendir.WithOnFile(func(ctx context.Context, f opendir.File, r io.Reader) error {
 			// 回调并发执行，需保证 goroutine-safe；
 			// r 仅在回调执行期间有效。

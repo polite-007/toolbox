@@ -485,6 +485,14 @@ func (c *crawler) scheduleEntries(owner *targetState, entries []listingEntry, le
 			if level+1 > c.config.Depth {
 				continue
 			}
+			if reason, skip := c.skipDirReason(entry.name); skip {
+				c.recordSkipped(owner, SkippedFile{
+					URL:    entry.url.String(),
+					Name:   entry.name,
+					Reason: reason,
+				})
+				continue
+			}
 			task := crawlTask{kind: taskDir, url: entry.url, level: level + 1, owner: owner}
 			if c.enqueue(task) {
 				c.mu.Lock()
@@ -522,6 +530,16 @@ func (c *crawler) skipReason(name string) (SkipReason, bool) {
 		}
 		if strings.HasSuffix(name, suffix) {
 			return SkipSuffix, true
+		}
+	}
+	return "", false
+}
+
+// skipDirReason 判断目录是否命中跳过规则（大小写敏感）
+func (c *crawler) skipDirReason(name string) (SkipReason, bool) {
+	for _, keyword := range c.config.SkipDirNames {
+		if keyword != "" && strings.Contains(name, keyword) {
+			return SkipDirName, true
 		}
 	}
 	return "", false
